@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Minimal TypeScript workspace for AIMORA Studio clients of the public Julia service protocol.",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "workspaces": [
     "apps/*",

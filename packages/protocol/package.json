@@ -3,6 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "description": "Versioned public message contract between AIMORA Studio and AIMORAService.jl.",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module"
 }
