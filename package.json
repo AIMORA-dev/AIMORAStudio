@@ -1,0 +1,18 @@
+{
+  "name": "@aimora/studio-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minimal TypeScript workspace for AIMORA Studio clients of the public Julia service protocol.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
