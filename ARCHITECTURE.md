@@ -2,7 +2,7 @@
 
 ## Status
 
-This document freezes the `GUI010` architecture boundary. It defines the target and ownership rules; it does not claim that the native application is already implemented.
+GUI010 froze the normative architecture. GUI020 now implements the native repository, build, dependency, quality, test, install, and CI foundation without claiming a visible GUI or engineering behavior.
 
 ## Product objective
 
@@ -32,6 +32,22 @@ The exact Qt patch, compiler, standard library, CMake version, and deployment ru
 Required runtime Qt modules are limited to `Core`, `Gui`, `Widgets`, `Network`, `PrintSupport`, and `Concurrent`. `Test` is test-only. `ShaderTools` may be build-only when the renderer requires precompiled shaders. Additional modules require a requirement-backed consumer, licence review, and resource measurement.
 
 The first release prohibits Qt Quick, QML, WebEngine, WebView, a bundled browser, JavaScript application code, Qt 3D, and a required Qt SVG module. SVG may exist only as an explicitly admitted derived exchange or report output; it is not the canonical symbol, scene, drawing, or publication intermediate.
+
+## Implemented GUI020 foundation
+
+The repository now contains independent CMake targets for:
+
+- native application entrypoint;
+- core application identity and version data;
+- bounded local-protocol client configuration;
+- renderer-neutral viewport state;
+- inspector panel state;
+- deterministic command registration;
+- dark/light/system theme-mode identity.
+
+These targets are deliberately small and contain no engineering model. The protocol package does not yet open sockets, the canvas package does not yet render, the inspector package does not yet create controls, and the themes package does not yet apply palettes. Their implementation belongs to the dependency-ordered packets that follow.
+
+The retired TypeScript/Node scaffold remains available through Git history but is absent from the GUI020 source tree. The source-tree contract fails if TypeScript, QML, or the retired Node entrypoints return to the primary desktop product.
 
 ## Supported-platform policy
 
@@ -140,9 +156,9 @@ The native editor supports semantic SLD entities and drafting-only entities in t
 
 Canonical sheets support model space, paper space, standard and custom paper sizes, frames, coordinate zones, viewports, scale, layers, title blocks, legends, general notes, revision/approval tables, and generated equipment/cable schedules.
 
-Interactive screen rendering is not publication. Issued PDF output is deterministic vector output generated from canonical drawing and symbol records, with exact paper dimensions, lineweights, searchable text, font policy, plot styles, and multi-page support. A WebGL/QRhi screenshot or raster-only PDF is not acceptable engineering output.
+Interactive screen rendering is not publication. Issued PDF output is deterministic vector output generated from canonical drawing and symbol records, with exact paper dimensions, lineweights, searchable text, font policy, plot styles, and multi-page support. A QRhi screenshot or raster-only PDF is not acceptable engineering output.
 
-DXF is the first editable AutoCAD exchange format. Export preserves layers, linetypes, lineweights, blocks, inserts, attributes, model/paper layouts, viewports, title blocks, and AIMORA identity metadata. Import is drafting-only by default and classifies every source item as mapped, ignored with reason, unsupported, or rejected. Any semantic change requires explicit reviewed mapping and a Julia transaction. Direct DWG support is outside version 1 unless a separately licensed adapter is accepted.
+DXF is the first editable AutoCAD exchange format. Export preserves layers, linetypes, lineweights, blocks, inserts, attributes, model/paper layouts, viewports, title blocks, and AIMORA identity metadata. Import is drafting-only by default and classifies every source item as mapped, preserved as drafting, ignored with reason, unsupported, or rejected. Any semantic change requires explicit reviewed mapping and a Julia transaction. Direct DWG support is outside version 1 unless a separately licensed adapter is accepted.
 
 ## Memory and performance rules
 
@@ -164,7 +180,7 @@ The product shall have no unbounded undo, scene, text, result, diagnostic, thumb
 
 Production C++ uses RAII, value types, explicit ownership, no owning raw pointers, bounded views at protocol boundaries, checked integer/length conversion, deterministic destruction, and no exceptions crossing ABI or protocol boundaries.
 
-The repository shall use strict compiler warnings, formatting, static analysis, AddressSanitizer, UndefinedBehaviorSanitizer, and platform-appropriate additional sanitizers in qualified lanes. Protocol, drawing, symbol, and DXF parsers receive malformed-input and fuzz testing.
+The repository uses strict compiler warnings, formatting, static analysis, AddressSanitizer, UndefinedBehaviorSanitizer, unit tests, source-structure checks, and native cross-platform CI. Protocol, drawing, symbol, and DXF parsers will receive malformed-input and fuzz testing when those parsers are introduced.
 
 The local service endpoint uses per-session authentication, version negotiation, input-size limits, path confinement, typed errors, cancellation, and no unrestricted code execution from untrusted payloads. Logs and crash reports contain no private solver paths, credentials, or restricted project data by default.
 
@@ -179,7 +195,3 @@ A distributed artifact uses one declared Qt licence route.
 An open-source dependency route may use only modules available under a compatible LGPL licence, dynamically links Qt, provides required notices and licence copies, supplies the applicable Qt source/relinking mechanism, records third-party licences, and excludes GPL-only modules. A commercial Qt route requires separately recorded commercial rights and build provenance. The two routes are not silently mixed in one artifact.
 
 Every release emits an SBOM and exact Qt module inventory. Legal review remains explicit; this architecture document is not legal advice.
-
-## Migration rule
-
-The existing TypeScript files are historical scaffolding until `GUI020`. They may be deleted only in the same accepted packet that adds the native CMake workspace, replacement protocol fixtures, native structural tests, and cross-platform CI. No historical commit is rewritten.

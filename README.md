@@ -1,10 +1,12 @@
 # AIMORAStudio
 
-`AIMORAStudio` is the public native desktop client for AIMORA. The accepted first-release architecture is C++20, Qt 6 Widgets, CMake, and an out-of-process Julia service. The application is intended to combine semantic power-system editing and study integration with a precise AutoCAD-like single-line-diagram and engineering-drawing workflow while keeping Julia as the only engineering source of truth.
+`AIMORAStudio` is the public native desktop client for AIMORA. The accepted first-release architecture is C++20, Qt 6 Widgets, CMake, and an out-of-process Julia service. The product target combines semantic power-system editing and study integration with a precise AutoCAD-like single-line-diagram and engineering-drawing workflow while keeping Julia as the only engineering source of truth.
 
 ## Current status
 
-The repository still contains the earlier minimal TypeScript protocol scaffold. It is retained only as migration history and does not define the accepted desktop architecture. `GUI020` will replace that scaffold with the native C++/Qt workspace after equivalent structural checks exist. No production GUI capability is claimed by this documentation-only architecture freeze.
+GUI020 installs the native repository foundation. It provides a real C++20/CMake workspace, exact Qt dependency lock, foundational libraries, a native command-line smoke executable, unit and structural tests, formatting/static-analysis/sanitizer configuration, install/export rules, and native Windows/macOS/Linux CI.
+
+GUI020 does **not** yet implement the visible graphical shell, Julia process lifecycle, renderer, semantic drawing model, property inspector, CAD tools, PDF plotting, or DXF exchange. Those remain in later packets.
 
 ## Frozen desktop architecture
 
@@ -28,24 +30,67 @@ AIMORA study worker
 
 The primary desktop application has no Electron, Chromium, Node.js runtime, Tauri, Rust, React, TypeScript, browser webview, Qt Quick, or QML dependency. Julia is not embedded into the GUI process for the first release.
 
-## Studio responsibilities
+## Repository layout
 
-- Native menu-only shell with the remaining window dedicated to the drawing canvas.
-- On-demand, dockable, floating, pinnable, and hideable inspectors and result panels.
-- High-performance retained SLD/CAD scene, local interaction previews, snapping, selection, and commands.
-- Dark, light, and system themes with identical functionality and print-independent styles.
-- Schema-driven property editing through stable Julia asset IDs.
-- Native print preview, engineering sheets, vector PDF requests, and DXF workflows.
-- Public unit, interaction, renderer, accessibility, memory, performance, packaging, and cross-platform tests.
+```text
+apps/studio/           Native application target
+packages/core/         Product/version and common native foundation
+packages/protocol/     Bounded generated-client configuration boundary
+packages/canvas/       Renderer-neutral viewport foundation
+packages/inspector/    Native panel-state foundation
+packages/commands/     Deterministic command registry foundation
+packages/themes/       Dark/light/system mode foundation
+cmake/                 Warnings, analysis, sanitizers, install, and contracts
+tests/                 Native unit and source-structure tests
+dependencies/          Exact Qt/tooling and licence inventory
+```
 
-## Studio does not own
+No package in this repository owns physical equipment equations, topology, units, readiness, study calculations, result validity, or full project state.
 
-- Physical equipment classes, topology, units, ratings, model readiness, or study equations.
-- Canonical drawing, sheet, symbol, result, or report semantics.
-- Solver state, full-resolution waveforms, sparse matrices, or private solver types.
-- Automatic inference of electrical connectivity from graphical intersections or imported CAD geometry.
+## Build
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the complete frozen boundary.
+Prerequisites:
+
+- CMake 3.28 or newer;
+- a C++20 compiler supported by the selected Qt build;
+- Qt 6.11.2 with Core, Gui, Widgets, Network, PrintSupport, Concurrent, and Test for test builds;
+- Ninja for the supplied local presets, or another CMake generator when configuring manually.
+
+```bash
+cmake --preset dev
+cmake --build --preset dev
+ctest --preset dev
+```
+
+A generator-neutral manual build is also supported:
+
+```bash
+cmake -S . -B build -DBUILD_TESTING=ON
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+cmake --build build --target aimora_studio_smoke
+```
+
+The smoke executable is intentionally non-graphical in GUI020:
+
+```bash
+./build/apps/studio/aimora-studio --architecture
+```
+
+## Quality gates
+
+The repository includes:
+
+- strict GCC, Clang, and MSVC warnings;
+- optional warnings-as-errors;
+- `.clang-format` policy, deterministic whitespace/line-length checks, and `.clang-tidy` analysis;
+- AddressSanitizer and UndefinedBehaviorSanitizer configuration;
+- Qt Test unit coverage of every foundational package;
+- a CMake source-tree contract that rejects the retired TypeScript/Node scaffold and prohibited primary-client file types;
+- install/export and archive-package foundations;
+- native CI for Windows, macOS, and Linux.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the frozen ownership and future product boundary.
 
 ## Licence
 

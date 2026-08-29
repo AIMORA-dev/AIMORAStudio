@@ -1,4 +1,4 @@
-name: Studio architecture contract
+name: Native Studio CI
 
 on:
   push:
@@ -12,36 +12,119 @@ permissions:
   contents: read
 
 concurrency:
-  group: studio-${{ github.workflow }}-${{ github.ref }}
+  group: native-studio-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  AIMORA_QT_VERSION: "6.11.2"
+
 jobs:
-  architecture:
-    name: Native architecture on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+  source-contract:
+    name: Source-tree contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Verify native repository structure
+        run: |
+          cmake -DAIMORA_SOURCE_DIR="${GITHUB_WORKSPACE}" -P cmake/VerifySourceTree.cmake
+          git diff --check
+
+  native-build:
+    name: ${{ matrix.os }} native build
+    needs: source-contract
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
-      - name: Verify the GUI010 native architecture freeze
-        shell: bash
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Install exact Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
+        with:
+          version: ${{ env.AIMORA_QT_VERSION }}
+          target: desktop
+          cache: true
+          setup-python: true
+          aqtversion: "==3.3.*"
+      - name: Configure
+        run: >-
+          cmake -S . -B build
+          -DBUILD_TESTING=ON
+          -DAIMORA_WARNINGS_AS_ERRORS=ON
+          -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Run native foundation smoke command
+        run: cmake --build build --config Release --target aimora_studio_smoke
+      - name: Verify install tree
+        run: cmake --install build --config Release --prefix staging
+
+  quality:
+    name: Formatting and clang-tidy
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Install exact Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
+        with:
+          version: ${{ env.AIMORA_QT_VERSION }}
+          target: desktop
+          cache: true
+          setup-python: true
+          aqtversion: "==3.3.*"
+      - name: Install static-analysis tools
         run: |
-          set -euo pipefail
-          git diff --check
-          test -f ARCHITECTURE.md
-          test -f README.md
-          test -f CONTRIBUTING.md
-          grep -Fq 'C++20' ARCHITECTURE.md
-          grep -Fq 'Qt 6.11.2' ARCHITECTURE.md
-          grep -Fq 'CMake 3.28' ARCHITECTURE.md
-          grep -Fq 'out-of-process Julia' README.md
-          grep -Fq 'does not claim that the native application is already implemented' ARCHITECTURE.md
-          grep -Fq 'retained as history until `GUI020`' CONTRIBUTING.md
-          grep -Fq 'Do not add Electron' CONTRIBUTING.md
-          grep -Fq 'Do not make SVG the canonical symbol' CONTRIBUTING.md
-          test ! -e CMakeLists.txt
-          test ! -d src
-          test ! -d apps
-          echo 'GUI010 architecture-only contract passed; GUI020 owns the native CMake implementation.'
+          sudo apt-get update
+          sudo apt-get install --yes clang-tidy
+      - name: Check deterministic formatting
+        run: cmake -DAIMORA_SOURCE_DIR="${GITHUB_WORKSPACE}" -P cmake/VerifyFormatting.cmake
+      - name: Configure clang-tidy build
+        env:
+          CC: clang
+          CXX: clang++
+        run: >-
+          cmake -S . -B build-quality
+          -DBUILD_TESTING=ON
+          -DAIMORA_WARNINGS_AS_ERRORS=ON
+          -DAIMORA_ENABLE_CLANG_TIDY=ON
+          -DCMAKE_BUILD_TYPE=Debug
+      - name: Build with clang-tidy
+        run: cmake --build build-quality --parallel
+      - name: Test quality build
+        run: ctest --test-dir build-quality --output-on-failure
+
+  sanitizers:
+    name: ASan and UBSan
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Install exact Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
+        with:
+          version: ${{ env.AIMORA_QT_VERSION }}
+          target: desktop
+          cache: true
+          setup-python: true
+          aqtversion: "==3.3.*"
+      - name: Configure sanitizer build
+        env:
+          CC: clang
+          CXX: clang++
+        run: >-
+          cmake -S . -B build-sanitizers
+          -DBUILD_TESTING=ON
+          -DAIMORA_WARNINGS_AS_ERRORS=ON
+          -DAIMORA_ENABLE_SANITIZERS=ON
+          -DCMAKE_BUILD_TYPE=Debug
+      - name: Build sanitizer targets
+        run: cmake --build build-sanitizers --parallel
+      - name: Test sanitizer build
+        env:
+          ASAN_OPTIONS: detect_leaks=0:strict_string_checks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build-sanitizers --output-on-failure
