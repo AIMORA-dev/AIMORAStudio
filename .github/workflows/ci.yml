@@ -1,4 +1,4 @@
-name: Studio CI
+name: Studio architecture contract
 
 on:
   push:
@@ -16,13 +16,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  architecture:
+    name: Native architecture on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    uses: AIMORA-dev/.github/.github/workflows/node-smoke.yml@c4eea2f0d3237419875db67a8c8d8752fce790cd
-    with:
-      runner: ${{ matrix.os }}
-      node-version: '22'
-      test-command: npm test
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify the GUI010 native architecture freeze
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test -f ARCHITECTURE.md
+          test -f README.md
+          test -f CONTRIBUTING.md
+          grep -Fq 'C++20' ARCHITECTURE.md
+          grep -Fq 'Qt 6.11.2' ARCHITECTURE.md
+          grep -Fq 'CMake 3.28' ARCHITECTURE.md
+          grep -Fq 'out-of-process Julia' README.md
+          grep -Fq 'does not claim that the native application is already implemented' ARCHITECTURE.md
+          grep -Fq 'retained as history until `GUI020`' CONTRIBUTING.md
+          grep -Fq 'Do not add Electron' CONTRIBUTING.md
+          grep -Fq 'Do not make SVG the canonical symbol' CONTRIBUTING.md
+          test ! -e CMakeLists.txt
+          test ! -d src
+          test ! -d apps
+          echo 'GUI010 architecture-only contract passed; GUI020 owns the native CMake implementation.'
