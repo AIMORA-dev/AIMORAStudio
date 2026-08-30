@@ -8,6 +8,7 @@ set(AIMORA_STUDIO_LIBRARY_TARGETS
     aimora_studio_inspector
     aimora_studio_commands
     aimora_studio_themes
+    aimora_studio_shell
 )
 
 install(
@@ -20,7 +21,7 @@ install(
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
-foreach(package_name IN ITEMS core protocol canvas inspector commands themes)
+foreach(package_name IN ITEMS core protocol canvas inspector commands themes shell)
     install(
         DIRECTORY "${PROJECT_SOURCE_DIR}/packages/${package_name}/include/"
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
@@ -62,7 +63,7 @@ install(
 set(CPACK_PACKAGE_NAME "AIMORAStudio")
 set(CPACK_PACKAGE_VENDOR "AIMORA")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Native AIMORAStudio foundation")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Native AIMORAStudio desktop shell")
 set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")
 set(CPACK_GENERATOR "TGZ;ZIP")
 include(CPack)

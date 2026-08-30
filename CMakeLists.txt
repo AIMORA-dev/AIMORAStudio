@@ -3,8 +3,8 @@ cmake_minimum_required(VERSION 3.28)
 
 project(
     AIMORAStudio
-    VERSION 0.1.0
-    DESCRIPTION "Native desktop client foundation for AIMORA"
+    VERSION 0.2.0
+    DESCRIPTION "Native desktop client for AIMORA"
     HOMEPAGE_URL "https://github.com/ahmelkholy/AIMORAStudio"
     LANGUAGES CXX
 )
@@ -66,6 +66,7 @@ add_subdirectory(packages/canvas)
 add_subdirectory(packages/inspector)
 add_subdirectory(packages/commands)
 add_subdirectory(packages/themes)
+add_subdirectory(packages/shell)
 add_subdirectory(apps/studio)
 
 if(BUILD_TESTING)

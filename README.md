@@ -1,12 +1,25 @@
 # AIMORAStudio
 
-`AIMORAStudio` is the public native desktop client for AIMORA. The accepted first-release architecture is C++20, Qt 6 Widgets, CMake, and an out-of-process Julia service. The product target combines semantic power-system editing and study integration with a precise AutoCAD-like single-line-diagram and engineering-drawing workflow while keeping Julia as the only engineering source of truth.
+`AIMORAStudio` is the public native desktop client for AIMORA. The accepted first-release architecture is C++20, Qt 6.11.2 Widgets, CMake, and an out-of-process Julia engineering service.
+
+The product target combines semantic power-system editing and study integration with a precise AutoCAD-like single-line-diagram and engineering-drawing workflow while keeping Julia as the only engineering source of truth.
 
 ## Current status
 
-GUI020 installs the native repository foundation. It provides a real C++20/CMake workspace, exact Qt dependency lock, foundational libraries, a native command-line smoke executable, unit and structural tests, formatting/static-analysis/sanitizer configuration, install/export rules, and native Windows/macOS/Linux CI.
+GUI030 delivers the first visible native application shell:
 
-GUI020 does **not** yet implement the visible graphical shell, Julia process lifecycle, renderer, semantic drawing model, property inspector, CAD tools, PDF plotting, or DXF exchange. Those remain in later packets.
+- native `QApplication` and `QMainWindow`;
+- drawing-first workspace with only the menubar visible by default;
+- File, Edit, View, Draw, Modify, Electrical, Studies, Results, Output, Tools, and Help menus;
+- hidden-on-start Project Browser, Inspector, and Command Line dock panels;
+- dock, float, pin, hide, restore, reset, and corrupt-layout recovery behavior;
+- persisted `system`, `light`, and `dark` appearance modes;
+- semantic theme tokens with committed light/dark fixtures and contrast checks;
+- high-DPI pass-through policy;
+- native About dialog;
+- offscreen shell smoke tests and Qt Test automation.
+
+GUI030 does not yet connect to Julia, render semantic SLD objects, edit equipment parameters, execute CAD commands, plot engineering PDF, or exchange DXF. Those capabilities remain in later dependency-ordered packets.
 
 ## Frozen desktop architecture
 
@@ -33,15 +46,16 @@ The primary desktop application has no Electron, Chromium, Node.js runtime, Taur
 ## Repository layout
 
 ```text
-apps/studio/           Native application target
+apps/studio/           Native application target and startup policy
 packages/core/         Product/version and common native foundation
 packages/protocol/     Bounded generated-client configuration boundary
 packages/canvas/       Renderer-neutral viewport foundation
 packages/inspector/    Native panel-state foundation
 packages/commands/     Deterministic command registry foundation
-packages/themes/       Dark/light/system mode foundation
-cmake/                 Warnings, analysis, sanitizers, install, and contracts
-tests/                 Native unit and source-structure tests
+packages/themes/       Theme modes, tokens, palette, persistence, controller
+packages/shell/        Main window, menus, drawing surface, docks, layout state
+cmake/                 Warnings, analysis, sanitizers, install, contracts
+tests/                 Native unit, shell, fixture, and source-structure tests
 dependencies/          Exact Qt/tooling and licence inventory
 ```
 
@@ -53,7 +67,7 @@ Prerequisites:
 
 - CMake 3.28 or newer;
 - a C++20 compiler supported by the selected Qt build;
-- Qt 6.11.2 with Core, Gui, Widgets, Network, PrintSupport, Concurrent, and Test for test builds;
+- Qt 6.11.2 with Core, Gui, Widgets, Network, PrintSupport, Concurrent, and Test;
 - Ninja for the supplied local presets, or another CMake generator when configuring manually.
 
 ```bash
@@ -68,14 +82,44 @@ A generator-neutral manual build is also supported:
 cmake -S . -B build -DBUILD_TESTING=ON
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
+```
+
+Run the application:
+
+```bash
+./build/apps/studio/aimora-studio
+```
+
+Run the committed light/dark shell smoke target:
+
+```bash
 cmake --build build --target aimora_studio_smoke
 ```
 
-The smoke executable is intentionally non-graphical in GUI020:
+Useful command-line options:
 
-```bash
-./build/apps/studio/aimora-studio --architecture
+```text
+--theme system|light|dark
+--reset-workspace
+--windowed
+--shell-smoke
+--architecture
+--version
 ```
+
+## Shell behavior
+
+The first launch opens maximized unless a valid saved workspace exists or `--windowed` is supplied. Only the menubar and central drawing surface are visible initially.
+
+Use **View** to show:
+
+- Project Browser — `Ctrl+Shift+E`;
+- Inspector — `F4`;
+- Command Line — `Ctrl+9`.
+
+Each panel can dock, float, hide, or be pinned through its native context action. Window geometry, dock state, and pin state are user settings and never enter the engineering project or physical hash.
+
+The View menu also selects system, light, or dark appearance and can reset corrupted or unwanted workspace layout. Screen appearance is independent of future paper-space, plot-style, PDF, and DXF semantics.
 
 ## Quality gates
 
@@ -83,12 +127,15 @@ The repository includes:
 
 - strict GCC, Clang, and MSVC warnings;
 - optional warnings-as-errors;
-- `.clang-format` policy, deterministic whitespace/line-length checks, and `.clang-tidy` analysis;
+- `.clang-format` and `.clang-tidy`;
 - AddressSanitizer and UndefinedBehaviorSanitizer configuration;
-- Qt Test unit coverage of every foundational package;
-- a CMake source-tree contract that rejects the retired TypeScript/Node scaffold and prohibited primary-client file types;
-- install/export and archive-package foundations;
-- native CI for Windows, macOS, and Linux.
+- Qt Test coverage of foundation, themes, menus, docks, persistence, recovery, and rendering;
+- committed semantic light/dark fixtures;
+- CMake source-tree, formatting, and fixture verification scripts;
+- installation/export and archive-package foundations;
+- native CI definitions for Windows, macOS, and Linux.
+
+No implementation script or source used by GUI030 is kept only in a temporary directory. The application, CMake verification scripts, fixtures, tests, and CI definition are tracked in this repository.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the frozen ownership and future product boundary.
 

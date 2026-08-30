@@ -2,7 +2,9 @@
 
 ## Status
 
-GUI010 froze the normative architecture. GUI020 now implements the native repository, build, dependency, quality, test, install, and CI foundation without claiming a visible GUI or engineering behavior.
+GUI010 froze the normative native architecture. GUI020 installed the C++20/CMake/Qt repository foundation. GUI030 now implements the first visible drawing-first `QMainWindow`, complete light/dark/system appearance control, optional native dock panels, local workspace persistence, recovery, and shell automation.
+
+This status does not claim Julia connectivity, semantic SLD rendering, equipment editing, CAD operations, engineering publication, DXF exchange, or accepted resource budgets.
 
 ## Product objective
 
@@ -33,9 +35,9 @@ Required runtime Qt modules are limited to `Core`, `Gui`, `Widgets`, `Network`, 
 
 The first release prohibits Qt Quick, QML, WebEngine, WebView, a bundled browser, JavaScript application code, Qt 3D, and a required Qt SVG module. SVG may exist only as an explicitly admitted derived exchange or report output; it is not the canonical symbol, scene, drawing, or publication intermediate.
 
-## Implemented GUI020 foundation
+## Implemented native foundation
 
-The repository now contains independent CMake targets for:
+The repository contains independent targets for:
 
 - native application entrypoint;
 - core application identity and version data;
@@ -43,11 +45,66 @@ The repository now contains independent CMake targets for:
 - renderer-neutral viewport state;
 - inspector panel state;
 - deterministic command registration;
-- dark/light/system theme-mode identity.
+- semantic theme system;
+- drawing-first native shell.
 
-These targets are deliberately small and contain no engineering model. The protocol package does not yet open sockets, the canvas package does not yet render, the inspector package does not yet create controls, and the themes package does not yet apply palettes. Their implementation belongs to the dependency-ordered packets that follow.
+The retired TypeScript/Node scaffold remains available through Git history but is absent from the accepted source tree. The source contract fails if TypeScript, QML, prohibited browser dependencies, or the retired Node entrypoints return to the primary desktop product.
 
-The retired TypeScript/Node scaffold remains available through Git history but is absent from the GUI020 source tree. The source-tree contract fails if TypeScript, QML, or the retired Node entrypoints return to the primary desktop product.
+## Implemented GUI030 shell
+
+The shell provides:
+
+```text
+QApplication
+└── StudioMainWindow
+    ├── native menubar
+    ├── DrawingWorkspace central widget
+    ├── hidden Project Browser dock
+    ├── hidden Inspector dock
+    ├── hidden Command Line dock
+    ├── theme actions
+    ├── workspace reset and recovery
+    └── native About dialog
+```
+
+The permanent menu families are:
+
+```text
+File  Edit  View  Draw  Modify  Electrical
+Studies  Results  Output  Tools  Help
+```
+
+Only the menubar and central drawing surface are visible by default. No ribbon, permanent toolbar, permanent status bar, or always-visible sidebar is created. Unimplemented capability families remain visible but disabled with an exact explanation.
+
+Panels are native `QDockWidget` instances. They can be shown, hidden, docked, floated, and pinned. A pinned panel removes its close feature until it is unpinned. Unique object IDs allow `QMainWindow::saveState()` and `restoreState()` to preserve layout.
+
+Window geometry, dock state, maximized state, and panel pins are stored through `QSettings`. Invalid or incomplete saved state is removed and replaced by the clean default workspace. These settings are local application preferences, not project or physical-model data.
+
+## Theme architecture
+
+`ThemeMode` has exactly three values:
+
+```text
+system
+light
+dark
+```
+
+`ThemeController` resolves the requested mode to an effective light or dark scheme, applies the Qt palette and bounded widget stylesheet, listens for system color-scheme changes, persists user choice, and emits one change notification.
+
+`ThemeTokens` owns semantic screen colors for:
+
+- window, panel, alternate panel, and canvas;
+- minor and major grid;
+- primary, secondary, and disabled text;
+- border, accent, accent text, selection, and focus;
+- warning, error, success, and conductor.
+
+Light and dark values are committed as versioned JSON fixtures. Tests require opaque valid colors and at least 4.5:1 contrast for normal primary/secondary text and accent text on their declared backgrounds.
+
+The central drawing surface consumes semantic tokens directly and renders a deterministic placeholder grid through `QPainter`. It is a shell qualification surface, not the retained engineering renderer. GUI080 replaces this placeholder with the renderer-neutral scene compiler and accelerated backend.
+
+Screen themes never own paper background, engineering lineweights, plot style, vector PDF, or DXF appearance.
 
 ## Supported-platform policy
 
@@ -60,6 +117,8 @@ Initial Tier-1 qualification targets are:
 - Ubuntu 24.04 x86-64 with a supported GCC or Clang toolchain.
 
 Windows Arm64, Linux Arm64, and macOS Intel are additional qualification targets and cannot be advertised as supported until their installer, GPU, printing, font, Julia-service, and performance evidence passes. Every release publishes an exact OS/compiler/architecture matrix instead of claiming unrestricted platform support.
+
+Qt's high-DPI scale-factor rounding policy is set before `QApplication` creation. Geometry and token sizes use device-independent coordinates. Fractional scaling, monitor changes, fonts, focus, and accessibility remain release-qualified behavior.
 
 ## Process architecture
 
@@ -90,7 +149,7 @@ Julia owns:
 
 - physical assets, terminals, topology, ratings, parameters, units, provenance, and uncertainty;
 - project revisions, transactions, validation, readiness, and result invalidation;
-- canonical view, drawing, sheet, symbol, workflow, result, visual, and report semantics in their designated Julia owners;
+- canonical view, drawing, sheet, symbol, workflow, result, visual, and report semantics;
 - full-resolution numerical results and scientific caches.
 
 C++ owns only:
@@ -103,21 +162,11 @@ C++ owns only:
 
 C++ must never contain a second physical equipment model or infer engineering meaning from an untyped numeric array.
 
-## Native shell
-
-The default workspace contains only the native menubar and the central drawing area. A ribbon and permanent sidebar are prohibited by default.
-
-Inspectors, libraries, command input, validation, jobs, results, and report panels appear on demand. They may be overlaid, docked, floated, pinned, or hidden using native `QMainWindow` and `QDockWidget` behavior. Layout persistence is application state, not physical-project semantics.
-
-Dark, light, and system-following themes use semantic tokens. Both themes provide identical commands, states, contrast, focus, diagnostics, plots, and high-DPI behavior. Screen themes never change paper background, engineering lineweights, monochrome plotting, or issued-document appearance.
-
 ## Renderer boundary
 
 The interactive canvas uses a custom retained scene and not one `QWidget`, `QObject`, `QGraphicsItem`, or other heavyweight framework object per drawing entity.
 
-The accelerated backend is isolated in one renderer package using public `QRhiWidget` and documented Qt RHI interfaces. The package may be rebuilt or replaced without changing canonical scene semantics. No Qt private header may become a public or canonical dependency. The exact Qt minor is pinned because RHI compatibility is narrower than ordinary Qt source compatibility.
-
-A deterministic `QPainter` backend provides software fallback, print-preview support, diagnostics, reference rendering, and renderer cross-checks.
+The accelerated backend is isolated in one renderer package using `QRhiWidget` and version-matched Qt RHI interfaces. No RHI or Qt private type crosses that package boundary. A deterministic `QPainter` backend provides software fallback, print-preview support, diagnostics, reference rendering, and renderer cross-checks.
 
 The scene design requires:
 
@@ -134,11 +183,7 @@ The scene design requires:
 
 A symbol is a projection of a stable Julia-owned engineering asset. The canonical symbol grammar is open text and contains lines, polylines, arcs, circles, ellipses, polygons, semantic ports, snap anchors, label anchors, operating-state variants, level-of-detail variants, styles, provenance, and licence metadata.
 
-The same primitive grammar compiles to:
-
-- native interactive scene geometry;
-- deterministic vector PDF drawing commands;
-- DXF block definitions and inserts.
+The same primitive grammar compiles to native interactive scene geometry, deterministic vector PDF commands, and DXF block definitions and inserts.
 
 A CAD line and an electrical connection are different commands and different canonical entity types. Geometrical crossing, imported geometry, symbol movement, or a DXF edit never silently creates, removes, or reconnects physical topology.
 
@@ -156,42 +201,24 @@ The native editor supports semantic SLD entities and drafting-only entities in t
 
 Canonical sheets support model space, paper space, standard and custom paper sizes, frames, coordinate zones, viewports, scale, layers, title blocks, legends, general notes, revision/approval tables, and generated equipment/cable schedules.
 
-Interactive screen rendering is not publication. Issued PDF output is deterministic vector output generated from canonical drawing and symbol records, with exact paper dimensions, lineweights, searchable text, font policy, plot styles, and multi-page support. A QRhi screenshot or raster-only PDF is not acceptable engineering output.
+Interactive screen rendering is not publication. Issued PDF output is deterministic vector output generated from canonical drawing and symbol records, with exact paper dimensions, lineweights, searchable text, font policy, plot styles, and multi-page support. A screen capture or raster-only PDF is not acceptable engineering output.
 
 DXF is the first editable AutoCAD exchange format. Export preserves layers, linetypes, lineweights, blocks, inserts, attributes, model/paper layouts, viewports, title blocks, and AIMORA identity metadata. Import is drafting-only by default and classifies every source item as mapped, preserved as drafting, ignored with reason, unsupported, or rejected. Any semantic change requires explicit reviewed mapping and a Julia transaction. Direct DWG support is outside version 1 unless a separately licensed adapter is accepted.
 
-## Memory and performance rules
+## Memory, quality, security, and accessibility
 
-The release gate measures, at minimum:
+The release gate measures GUI/service/worker memory, startup, input latency, frame time, publication throughput, result-window memory, cleanup, and long-session stability. The product has no unbounded undo, scene, text, result, diagnostic, thumbnail, or worker cache.
 
-- GUI-only idle resident memory;
-- project-open GUI and service memory;
-- study-worker peak memory and post-worker cleanup;
-- startup and first-project-open latency;
-- pointer-to-frame input latency and frame time;
-- layout, PDF, and DXF throughput;
-- large-result window memory;
-- repeated document open/close and GPU disposal;
-- long-session stability.
+Production C++ uses RAII, value types, explicit ownership, no owning raw pointers, bounded views, checked conversion, deterministic destruction, and no exceptions across protocol or ABI boundaries.
 
-The product shall have no unbounded undo, scene, text, result, diagnostic, thumbnail, or worker cache. Full project graphs, full waveforms, matrices, and solver states remain in Julia. Performance claims require named hardware and realistic fixtures rather than demo scenes.
+The repository uses strict warnings, formatting, static analysis, sanitizers, unit tests, shell tests, source contracts, committed theme fixtures, and native cross-platform CI. Protocol, drawing, symbol, and DXF parsers receive malformed-input and fuzz testing when introduced.
 
-## C++ quality and security
-
-Production C++ uses RAII, value types, explicit ownership, no owning raw pointers, bounded views at protocol boundaries, checked integer/length conversion, deterministic destruction, and no exceptions crossing ABI or protocol boundaries.
-
-The repository uses strict compiler warnings, formatting, static analysis, AddressSanitizer, UndefinedBehaviorSanitizer, unit tests, source-structure checks, and native cross-platform CI. Protocol, drawing, symbol, and DXF parsers will receive malformed-input and fuzz testing when those parsers are introduced.
-
-The local service endpoint uses per-session authentication, version negotiation, input-size limits, path confinement, typed errors, cancellation, and no unrestricted code execution from untrusted payloads. Logs and crash reports contain no private solver paths, credentials, or restricted project data by default.
-
-## Accessibility
-
-Menus, dialogs, inspectors, tables, command entry, and selected canvas objects expose native accessibility semantics. The complete core workflow is keyboard-operable. Focus, contrast, high-DPI, reduced-motion, and color-independent diagnostic meaning are release requirements.
+Menus, dialogs, panels, command entry, and selected canvas objects expose native accessibility semantics. The core workflow is keyboard-operable. Focus, contrast, high-DPI, reduced motion, and color-independent diagnostics are release requirements.
 
 ## Qt licence policy
 
 A distributed artifact uses one declared Qt licence route.
 
-An open-source dependency route may use only modules available under a compatible LGPL licence, dynamically links Qt, provides required notices and licence copies, supplies the applicable Qt source/relinking mechanism, records third-party licences, and excludes GPL-only modules. A commercial Qt route requires separately recorded commercial rights and build provenance. The two routes are not silently mixed in one artifact.
+An open-source dependency route may use only compatible LGPL modules, dynamically links Qt, provides required notices and licence copies, supplies applicable Qt source/relinking information, records third-party licences, and excludes GPL-only modules. A commercial Qt route requires separately recorded commercial rights and build provenance.
 
 Every release emits an SBOM and exact Qt module inventory. Legal review remains explicit; this architecture document is not legal advice.

@@ -17,20 +17,22 @@ concurrency:
 
 env:
   AIMORA_QT_VERSION: "6.11.2"
+  QT_QPA_PLATFORM: "offscreen"
 
 jobs:
   source-contract:
-    name: Source-tree contract
+    name: Source and theme contracts
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - name: Verify native repository structure
         run: |
           cmake -DAIMORA_SOURCE_DIR="${GITHUB_WORKSPACE}" -P cmake/VerifySourceTree.cmake
+          cmake -DAIMORA_SOURCE_DIR="${GITHUB_WORKSPACE}" -P cmake/VerifyThemeFixtures.cmake
           git diff --check
 
   native-build:
-    name: ${{ matrix.os }} native build
+    name: ${{ matrix.os }} native shell
     needs: source-contract
     strategy:
       fail-fast: false
@@ -57,8 +59,14 @@ jobs:
         run: cmake --build build --config Release --parallel
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
-      - name: Run native foundation smoke command
+      - name: Run light and dark shell smoke
         run: cmake --build build --config Release --target aimora_studio_smoke
+      - name: Verify architecture command
+        run: build/apps/studio/aimora-studio --architecture
+        if: runner.os != 'Windows'
+      - name: Verify architecture command on Windows
+        run: .\build\apps\studio\Release\aimora-studio.exe --architecture
+        if: runner.os == 'Windows'
       - name: Verify install tree
         run: cmake --install build --config Release --prefix staging
 

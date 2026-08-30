@@ -12,10 +12,18 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-Before a commit, also run the source-tree contract and a warnings-as-errors build:
+Before a commit, run every committed repository contract:
 
 ```bash
 cmake -DAIMORA_SOURCE_DIR="$PWD" -P cmake/VerifySourceTree.cmake
+cmake -DAIMORA_SOURCE_DIR="$PWD" -P cmake/VerifyThemeFixtures.cmake
+cmake -DAIMORA_SOURCE_DIR="$PWD" -P cmake/VerifyFormatting.cmake
+cmake --build build/dev --target aimora_studio_smoke
+```
+
+Run the warnings/static-analysis preset:
+
+```bash
 cmake --preset quality
 cmake --build --preset quality
 ctest --preset quality
@@ -29,6 +37,8 @@ cmake --build --preset sanitizers
 ctest --preset sanitizers
 ```
 
+All implementation source, CMake scripts, fixtures, and tests required to reproduce a packet must be tracked in the repository. Temporary generation files may assist development but cannot be the only copy of accepted work.
+
 ## Required boundaries
 
 - Do not add physical equipment equations, topology rules, units, readiness logic, or study calculations to C++.
@@ -37,6 +47,8 @@ ctest --preset sanitizers
 - Do not infer electrical connectivity from geometry or imported CAD lines.
 - Do not make SVG the canonical symbol, scene, drawing, or publication format.
 - Do not expose private solver types, paths, source, or evidence through the client protocol.
+- Do not add a permanent ribbon, toolbar, status bar, or always-visible sidebar to the default drawing workspace.
+- Do not make screen theme tokens control paper color, engineering lineweights, PDF, or DXF output.
 
 ## Package ownership
 
@@ -45,8 +57,23 @@ ctest --preset sanitizers
 - `canvas` owns renderer-neutral view and interaction state, never engineering topology.
 - `inspector` owns native presentation state, never equipment definitions.
 - `commands` owns client command registration and routing metadata, never Julia mutation rules.
-- `themes` owns screen theme state, never engineering print styles.
+- `themes` owns screen modes, semantic colors, palette application, and preference persistence.
+- `shell` owns `QMainWindow`, menus, native docks, clean-workspace behavior, and local layout state.
 - `apps/studio` composes packages and must not absorb package-owned behavior.
+
+## Shell and theme rules
+
+The default shell must show only the native menubar and central drawing surface. Panels start hidden and must remain optional, dockable, floatable, pinnable, and recoverable from invalid saved state.
+
+Menu families are stable: File, Edit, View, Draw, Modify, Electrical, Studies, Results, Output, Tools, and Help. Commands not implemented by the current accepted capability must be disabled and explained, not simulated.
+
+Theme changes use semantic tokens and keep dark/light feature parity. New tokens require:
+
+- committed light and dark fixture values;
+- contrast checks;
+- palette and drawing-surface tests;
+- high-DPI review;
+- proof that publication semantics are unchanged.
 
 ## C++ and Qt quality
 
@@ -60,9 +87,9 @@ All C++ and CMake source files must carry the repository SPDX identifier. Keep p
 
 AIMORA symbols and UI artwork must be original or have exact compatible redistribution and commercial-use rights. Familiar engineering conventions may be implemented independently, but proprietary ETAP, DIgSILENT, AutoCAD, manufacturer, standards-body, logo, font, or drawing assets must not be copied without permission and provenance.
 
-## Migration status
+## Commit policy
 
-The former TypeScript protocol scaffold was retired by GUI020 after the native CMake workspace and replacement structural tests were installed. Historical commits remain unchanged and recoverable.
+Each packet creates at most one implementation commit in each changed child repository. The parent Workspace may require one separate coordination commit to record the reviewed child Gitlink and packet state because Git cannot commit across independent repositories atomically. Intermediate, progress, temporary-script, or cleanup commits are not accepted packet output.
 
 ## Contribution licence
 

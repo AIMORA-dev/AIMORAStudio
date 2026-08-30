@@ -9,6 +9,7 @@ set(required_paths
     "CMakeLists.txt"
     "CMakePresets.json"
     "cmake/VerifyFormatting.cmake"
+    "cmake/VerifyThemeFixtures.cmake"
     "dependencies/qt-lock.json"
     "dependencies/third-party.toml"
     "apps/studio/CMakeLists.txt"
@@ -19,13 +20,26 @@ set(required_paths
     "packages/inspector/CMakeLists.txt"
     "packages/commands/CMakeLists.txt"
     "packages/themes/CMakeLists.txt"
+    "packages/themes/include/aimora/studio/themes/theme_system.hpp"
+    "packages/themes/src/theme_system.cpp"
+    "packages/shell/CMakeLists.txt"
+    "packages/shell/include/aimora/studio/shell/studio_shell.hpp"
+    "packages/shell/src/drawing_workspace.cpp"
+    "packages/shell/src/studio_dock_widget.cpp"
+    "packages/shell/src/studio_main_window.cpp"
+    "packages/shell/src/studio_menus.cpp"
+    "packages/shell/src/studio_panels.cpp"
+    "packages/shell/src/workspace_settings.cpp"
     "tests/CMakeLists.txt"
     "tests/foundation_tests.cpp"
+    "tests/shell_tests.cpp"
+    "tests/fixtures/theme-light.json"
+    "tests/fixtures/theme-dark.json"
 )
 
 foreach(relative_path IN LISTS required_paths)
     if(NOT EXISTS "${AIMORA_SOURCE_DIR}/${relative_path}")
-        message(FATAL_ERROR "Missing native Studio foundation path: ${relative_path}")
+        message(FATAL_ERROR "Missing native Studio shell path: ${relative_path}")
     endif()
 endforeach()
 
@@ -131,4 +145,43 @@ foreach(product_file IN LISTS product_build_files)
     endforeach()
 endforeach()
 
-message(STATUS "AIMORAStudio native source-tree contract passed.")
+set(shell_source "")
+foreach(shell_file IN ITEMS
+    studio_main_window.cpp
+    studio_menus.cpp
+    studio_panels.cpp
+)
+    file(READ "${AIMORA_SOURCE_DIR}/packages/shell/src/${shell_file}" shell_part)
+    string(APPEND shell_source "${shell_part}")
+endforeach()
+foreach(required_menu IN ITEMS File Edit View Draw Modify Electrical Studies Results Output Tools Help)
+    string(FIND "${shell_source}" "\"&${required_menu}\"" menu_offset)
+    if(menu_offset EQUAL -1)
+        message(FATAL_ERROR "Missing required native menu family: ${required_menu}")
+    endif()
+endforeach()
+
+string(FIND "${shell_source}" "QToolBar" toolbar_offset)
+if(NOT toolbar_offset EQUAL -1)
+    message(FATAL_ERROR "The drawing-first shell must not create a permanent toolbar.")
+endif()
+
+file(READ "${AIMORA_SOURCE_DIR}/apps/studio/main.cpp" application_source)
+string(FIND "${application_source}" "setHighDpiScaleFactorRoundingPolicy" high_dpi_offset)
+if(high_dpi_offset EQUAL -1)
+    message(FATAL_ERROR "The native application must set an explicit high-DPI rounding policy.")
+endif()
+
+execute_process(
+    COMMAND
+        "${CMAKE_COMMAND}"
+        -DAIMORA_SOURCE_DIR=${AIMORA_SOURCE_DIR}
+        -P
+        "${AIMORA_SOURCE_DIR}/cmake/VerifyThemeFixtures.cmake"
+    RESULT_VARIABLE fixture_result
+)
+if(NOT fixture_result EQUAL 0)
+    message(FATAL_ERROR "Committed theme fixture verification failed.")
+endif()
+
+message(STATUS "AIMORAStudio native shell source-tree contract passed.")
