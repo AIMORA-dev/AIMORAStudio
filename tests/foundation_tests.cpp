@@ -109,7 +109,7 @@ void FoundationTests::protocolConfigurationRequiresBoundedAuthenticatedLocalStat
 
     const ClientConfiguration valid{
         .endpoint = QStringLiteral("aimora-session-001"),
-        .sessionToken = QByteArray(32, 'a'),
+        .sessionToken = QByteArray(64, 'a'),
         .limits = ClientLimits{},
     };
     QVERIFY(valid.isValid());
