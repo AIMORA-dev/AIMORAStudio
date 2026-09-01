@@ -1,0 +1,28 @@
+{
+  "schema": "aimora.theme.tokens.v1",
+  "mode": "light",
+  "tokens": {
+    "window": "#F4F7FA",
+    "panel": "#FFFFFF",
+    "panel_alternate": "#EAF0F6",
+    "canvas": "#FAFCFE",
+    "grid_minor": "#E2E8F0",
+    "grid_major": "#C4CFDC",
+    "text_primary": "#17212B",
+    "text_secondary": "#425466",
+    "text_disabled": "#7B8794",
+    "border": "#C7D1DC",
+    "accent": "#075FCE",
+    "accent_text": "#FFFFFF",
+    "selection": "#C7E0FF",
+    "focus": "#075FCE",
+    "warning": "#8A5D00",
+    "error": "#B42318",
+    "success": "#067647",
+    "conductor": "#1F2937"
+  },
+  "minimum_contrast": {
+    "normal_text": 4.5,
+    "large_text": 3.0
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "aimora.studio.qt-lock.v1",
+  "cpp_standard": 20,
+  "cmake_minimum": "3.28",
+  "qt_api_family": "6.11",
+  "qt_version": "6.11.2",
+  "runtime_modules": [
+    "Core",
+    "Gui",
+    "Widgets",
+    "Network",
+    "PrintSupport",
+    "Concurrent"
+  ],
+  "test_modules": [
+    "Test"
+  ],
+  "build_only_modules": [
+    "ShaderTools (only when an accepted renderer shader requires it)"
+  ],
+  "prohibited_primary_modules": [
+    "WebEngine",
+    "WebView",
+    "Qml",
+    "Quick",
+    "Quick3D",
+    "3DCore",
+    "VirtualKeyboard",
+    "Svg as a required canonical dependency"
+  ],
+  "release_policy": "Every release records an exact Qt patch, toolchain, module, binary, licence, and SBOM inventory."
+}
