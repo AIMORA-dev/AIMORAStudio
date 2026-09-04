@@ -40,7 +40,7 @@ find_package(
         Concurrent
 )
 
-find_package(Qt6 ${AIMORA_QT_VERSION} EXACT REQUIRED COMPONENTS ShaderTools)
+find_package(Qt6 ${AIMORA_QT_VERSION} EXACT REQUIRED COMPONENTS GuiPrivate ShaderTools)
 
 if(BUILD_TESTING)
     find_package(Qt6 ${AIMORA_QT_VERSION} EXACT REQUIRED COMPONENTS Test)

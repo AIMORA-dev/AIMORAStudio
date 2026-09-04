@@ -29,9 +29,16 @@ target_link_libraries(
 qt_add_shaders(
     aimora_studio_renderer aimora_scene_shaders
     PREFIX "/aimora/renderer"
+    OUTPUT_TARGETS aimora_renderer_resource_targets
     FILES
         shaders/scene.vert
         shaders/scene.frag
+)
+
+set(
+    AIMORA_STUDIO_RENDERER_RESOURCE_TARGETS
+    "${aimora_renderer_resource_targets}"
+    PARENT_SCOPE
 )
 
 aimora_target_defaults(aimora_studio_renderer)

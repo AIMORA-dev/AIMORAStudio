@@ -10,6 +10,7 @@ set(AIMORA_STUDIO_LIBRARY_TARGETS
     aimora_studio_commands
     aimora_studio_themes
     aimora_studio_shell
+    ${AIMORA_STUDIO_RENDERER_RESOURCE_TARGETS}
 )
 
 install(
