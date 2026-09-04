@@ -241,20 +241,23 @@ class CatalogFilterModel final : public QSortFilterProxyModel {
   public:
     using QSortFilterProxyModel::QSortFilterProxyModel;
 
-    void setSearch(QString search) {
+    void setSearch(const QString& search) {
+        beginFilterChange();
         searchTerms_ =
             search.toLower().split(QLatin1Char(' '), Qt::SkipEmptyParts);
-        invalidateRowsFilter();
+        endFilterChange(QSortFilterProxyModel::Direction::Rows);
     }
 
     void setScope(QString scope) {
+        beginFilterChange();
         scope_ = std::move(scope);
-        invalidateRowsFilter();
+        endFilterChange(QSortFilterProxyModel::Direction::Rows);
     }
 
     void setCategory(QString category) {
+        beginFilterChange();
         category_ = std::move(category);
-        invalidateRowsFilter();
+        endFilterChange(QSortFilterProxyModel::Direction::Rows);
     }
 
   protected:
