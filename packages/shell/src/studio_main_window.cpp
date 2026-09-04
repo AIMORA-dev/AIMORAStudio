@@ -209,9 +209,9 @@ QMenu* StudioMainWindow::menu(QStringView menuId) const {
 
 QAction* StudioMainWindow::registerAction(
     QString id,
-    QString label,
-    QString category,
-    QKeySequence shortcut
+    const QString& label,
+    const QString& category,
+    const QKeySequence& shortcut
 ) {
     const commands::CommandDefinition definition{
         .id = id,
@@ -225,9 +225,9 @@ QAction* StudioMainWindow::registerAction(
         qFatal("Invalid or duplicate AIMORAStudio command registration.");
     }
 
-    QAction* action = new QAction{std::move(label), this};
+    QAction* action = new QAction{label, this};
     action->setObjectName(id);
-    action->setShortcut(std::move(shortcut));
+    action->setShortcut(shortcut);
     action->setShortcutContext(Qt::WindowShortcut);
     action->setProperty("aimoraCommandCategory", category);
     addAction(action);
@@ -237,12 +237,11 @@ QAction* StudioMainWindow::registerAction(
 
 StudioDockWidget* StudioMainWindow::addPanel(
     QString panelId,
-    QString title,
+    const QString& title,
     Qt::DockWidgetArea defaultArea,
     QWidget* content
 ) {
-    StudioDockWidget* dock =
-        new StudioDockWidget{panelId, std::move(title), content, this};
+    StudioDockWidget* dock = new StudioDockWidget{panelId, title, content, this};
     defaultDockAreas_.insert(panelId, defaultArea);
     panels_.insert(std::move(panelId), dock);
     addDockWidget(defaultArea, dock);
@@ -251,8 +250,8 @@ StudioDockWidget* StudioMainWindow::addPanel(
 }
 
 QWidget* StudioMainWindow::createInformationPanel(
-    QString title,
-    QString description
+    const QString& title,
+    const QString& description
 ) const {
     QWidget* panelContent = new QWidget;
     panelContent->setProperty("aimoraPanel", true);
@@ -262,13 +261,13 @@ QWidget* StudioMainWindow::createInformationPanel(
     layout->setContentsMargins(16, 16, 16, 16);
     layout->setSpacing(10);
 
-    auto* heading = new QLabel{std::move(title), panelContent};
+    auto* heading = new QLabel{title, panelContent};
     QFont headingFont = heading->font();
     headingFont.setBold(true);
     heading->setFont(headingFont);
     layout->addWidget(heading);
 
-    auto* explanation = new QLabel{std::move(description), panelContent};
+    auto* explanation = new QLabel{description, panelContent};
     explanation->setWordWrap(true);
     explanation->setTextInteractionFlags(Qt::TextSelectableByKeyboard);
     layout->addWidget(explanation);
@@ -297,10 +296,10 @@ QWidget* StudioMainWindow::createCommandPanel() const {
     return panelContent;
 }
 
-void StudioMainWindow::addUnavailableAction(QMenu& target, QString explanation) {
+void StudioMainWindow::addUnavailableAction(QMenu& target, const QString& explanation) {
     QAction* unavailable = target.addAction(tr("No commands available in this release"));
     unavailable->setEnabled(false);
-    unavailable->setStatusTip(std::move(explanation));
+    unavailable->setStatusTip(explanation);
     unavailable->setToolTip(unavailable->statusTip());
 }
 

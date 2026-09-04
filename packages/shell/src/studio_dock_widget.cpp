@@ -11,11 +11,11 @@ namespace aimora::studio::shell {
 
 StudioDockWidget::StudioDockWidget(
     QString panelId,
-    QString title,
+    const QString& title,
     QWidget* content,
     QWidget* parent
 )
-    : QDockWidget{std::move(title), parent},
+    : QDockWidget{title, parent},
       panelId_{std::move(panelId)} {
     setObjectName(panelId_);
     setAccessibleName(windowTitle());
