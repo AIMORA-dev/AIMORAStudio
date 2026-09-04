@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
-add_library(aimora_studio_commands STATIC src/command_registry.cpp)
+add_library(
+    aimora_studio_commands STATIC
+    include/aimora/studio/commands/command_registry.hpp
+    include/aimora/studio/commands/drawing_interaction.hpp
+    src/command_registry.cpp
+    src/drawing_interaction.cpp
+)
 add_library(AIMORA::StudioCommands ALIAS aimora_studio_commands)
 
 set_target_properties(aimora_studio_commands PROPERTIES EXPORT_NAME StudioCommands)

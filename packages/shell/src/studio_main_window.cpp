@@ -275,7 +275,7 @@ QWidget* StudioMainWindow::createInformationPanel(
     return panelContent;
 }
 
-QWidget* StudioMainWindow::createCommandPanel() const {
+QWidget* StudioMainWindow::createCommandPanel() {
     QWidget* panelContent = new QWidget;
     panelContent->setProperty("aimoraPanel", true);
     panelContent->setAccessibleName(tr("Command line"));
@@ -283,16 +283,39 @@ QWidget* StudioMainWindow::createCommandPanel() const {
     auto* layout = new QVBoxLayout{panelContent};
     layout->setContentsMargins(12, 12, 12, 12);
 
-    auto* commandLine = new QLineEdit{panelContent};
-    commandLine->setObjectName(QStringLiteral("aimora.command-line"));
-    commandLine->setReadOnly(true);
-    commandLine->setPlaceholderText(
-        tr("Precision command execution is introduced in GUI090.")
+    commandLine_ = new QLineEdit{panelContent};
+    commandLine_->setObjectName(QStringLiteral("aimora.command-line"));
+    commandLine_->setPlaceholderText(
+        tr("Command or coordinates: LINE, PL, MOVE, GRID, ORTHO, POLAR")
     );
-    commandLine->setAccessibleDescription(
-        tr("Reserved native command line; command execution is not available yet.")
+    commandLine_->setAccessibleDescription(
+        tr("Enter a command alias, absolute coordinates, relative @x,y coordinates, "
+           "or polar @distance<angle coordinates.")
     );
-    layout->addWidget(commandLine);
+    connect(commandLine_, &QLineEdit::returnPressed, this, [this]() {
+        if (drawingWorkspace_->executeCommandText(commandLine_->text())) {
+            commandLine_->clear();
+            commandLine_->setProperty("aimoraInputRejected", false);
+            for (const QString& actionId : {QStringLiteral("view.grid-snap"),
+                                            QStringLiteral("view.ortho"),
+                                            QStringLiteral("view.polar")}) {
+                if (QAction* action = commandAction(QStringView{actionId}); action != nullptr) {
+                    const QSignalBlocker blocker{action};
+                    if (actionId.endsWith(QStringLiteral("grid-snap"))) {
+                        action->setChecked(drawingWorkspace_->gridSnapEnabled());
+                    } else if (actionId.endsWith(QStringLiteral("ortho"))) {
+                        action->setChecked(drawingWorkspace_->orthoEnabled());
+                    } else {
+                        action->setChecked(drawingWorkspace_->polarEnabled());
+                    }
+                }
+            }
+        } else {
+            commandLine_->setProperty("aimoraInputRejected", true);
+            commandLine_->selectAll();
+        }
+    });
+    layout->addWidget(commandLine_);
     return panelContent;
 }
 

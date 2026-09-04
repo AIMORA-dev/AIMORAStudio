@@ -2,6 +2,7 @@
 #include "aimora/studio/shell/studio_shell.hpp"
 
 #include <QAction>
+#include <QLineEdit>
 #include <QMenu>
 #include <QPair>
 #include <QSignalBlocker>
@@ -69,6 +70,11 @@ void StudioMainWindow::createPanels() {
     );
     commandAction->setCheckable(true);
     viewMenu->insertAction(panelInsertionAnchor, commandAction);
+    connect(commandPanel, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (visible && commandLine_ != nullptr) {
+            commandLine_->setFocus();
+        }
+    });
     viewMenu->insertSeparator(panelInsertionAnchor);
 
     const QList<QPair<QAction*, StudioDockWidget*>> panelBindings{

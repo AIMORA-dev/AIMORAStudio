@@ -8,6 +8,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QPair>
+#include <QSignalBlocker>
 
 namespace aimora::studio::shell {
 
@@ -124,9 +125,61 @@ void StudioMainWindow::createMenus() {
     );
     menu(QStringView{u"view"})->addAction(resetWorkspaceAction);
 
+    menu(QStringView{u"view"})->addSeparator();
+    QAction* gridSnapAction = registerAction(
+        QStringLiteral("view.grid-snap"),
+        tr("Grid Snap"),
+        QStringLiteral("View"),
+        QKeySequence{QStringLiteral("F7")}
+    );
+    gridSnapAction->setCheckable(true);
+    gridSnapAction->setChecked(drawingWorkspace_->gridSnapEnabled());
+    connect(gridSnapAction, &QAction::toggled, drawingWorkspace_, [this](bool enabled) {
+        drawingWorkspace_->setGridSnapEnabled(enabled);
+    });
+    menu(QStringView{u"view"})->addAction(gridSnapAction);
+
+    QAction* orthoAction = registerAction(
+        QStringLiteral("view.ortho"),
+        tr("Ortho Constraint"),
+        QStringLiteral("View"),
+        QKeySequence{QStringLiteral("F8")}
+    );
+    orthoAction->setCheckable(true);
+    connect(orthoAction, &QAction::toggled, drawingWorkspace_, [this, orthoAction](bool enabled) {
+        drawingWorkspace_->setOrthoEnabled(enabled);
+        if (enabled) {
+            if (QAction* polar = commandAction(QStringView{u"view.polar"}); polar != nullptr) {
+                const QSignalBlocker blocker{polar};
+                polar->setChecked(false);
+            }
+        }
+        orthoAction->setChecked(drawingWorkspace_->orthoEnabled());
+    });
+    menu(QStringView{u"view"})->addAction(orthoAction);
+
+    QAction* polarAction = registerAction(
+        QStringLiteral("view.polar"),
+        tr("Polar Constraint"),
+        QStringLiteral("View"),
+        QKeySequence{QStringLiteral("F10")}
+    );
+    polarAction->setCheckable(true);
+    connect(polarAction, &QAction::toggled, drawingWorkspace_, [this, polarAction](bool enabled) {
+        drawingWorkspace_->setPolarEnabled(enabled);
+        if (enabled) {
+            if (QAction* ortho = commandAction(QStringView{u"view.ortho"}); ortho != nullptr) {
+                const QSignalBlocker blocker{ortho};
+                ortho->setChecked(false);
+            }
+        }
+        polarAction->setChecked(drawingWorkspace_->polarEnabled());
+    });
+    menu(QStringView{u"view"})->addAction(polarAction);
+
     addUnavailableAction(
         *menu(QStringView{u"draw"}),
-        tr("Drawing commands are introduced by the precision viewport and drafting packets.")
+        tr("Canonical drawing entities are introduced by the Power Drafting Profile packet.")
     );
     addUnavailableAction(
         *menu(QStringView{u"modify"}),
