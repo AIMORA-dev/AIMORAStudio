@@ -57,7 +57,10 @@ namespace generated = aimora::studio::protocol::generated;
     };
 }
 
-[[nodiscard]] QJsonObject failure(QString requestId, QString code, QString message) {
+[[nodiscard]] QJsonObject failure(QString requestId,
+                                  QString code,
+                                  QString message,
+                                  QJsonObject details = {}) {
     return {
         {QStringLiteral("protocol_version"), protocolVersion()},
         {QStringLiteral("request_id"), std::move(requestId)},
@@ -66,7 +69,7 @@ namespace generated = aimora::studio::protocol::generated;
          QJsonObject{
              {QStringLiteral("code"), std::move(code)},
              {QStringLiteral("message"), std::move(message)},
-             {QStringLiteral("details"), QJsonObject{}},
+             {QStringLiteral("details"), std::move(details)},
          }},
     };
 }
@@ -172,6 +175,75 @@ class MockConnection final : public QObject {
                                       parameters.value(QStringLiteral("target_request_id"))},
                                      {QStringLiteral("cancelled"), true},
                                  }));
+        } else if (method == QStringLiteral("inspector.describe")) {
+            QJsonObject identity = parameters;
+            identity.insert(QStringLiteral("equipment_class"), QStringLiteral("breaker"));
+            identity.insert(QStringLiteral("result_bindings"), QJsonArray{});
+            writeControl(success(
+                requestId,
+                {
+                    {QStringLiteral("schema_version"), QStringLiteral("1.0.0")},
+                    {QStringLiteral("revision"), QString::number(inspectionRevision_)},
+                    {QStringLiteral("identity"), identity},
+                    {QStringLiteral("sections"),
+                     QJsonArray{QJsonObject{
+                         {QStringLiteral("id"), QStringLiteral("ratings")},
+                         {QStringLiteral("title"), QStringLiteral("Ratings")},
+                         {QStringLiteral("available"), true},
+                         {QStringLiteral("fields"),
+                          QJsonArray{QJsonObject{
+                              {QStringLiteral("path"), QStringLiteral("ratings.voltage")},
+                              {QStringLiteral("label"), QStringLiteral("Rated voltage")},
+                              {QStringLiteral("kind"), QStringLiteral("number")},
+                              {QStringLiteral("canonical_unit"), QStringLiteral("V")},
+                              {QStringLiteral("display_units"), QJsonArray{}},
+                              {QStringLiteral("choices"), QJsonArray{}},
+                              {QStringLiteral("dependencies"), QJsonArray{}},
+                          }}},
+                     }}},
+                    {QStringLiteral("values"),
+                     QJsonObject{
+                         {QStringLiteral("ratings.voltage"),
+                          QJsonObject{{QStringLiteral("value"), 11000.0},
+                                      {QStringLiteral("canonical_unit"), QStringLiteral("V")},
+                                      {QStringLiteral("issues"), QJsonArray{}}}},
+                     }},
+                    {QStringLiteral("undo_available"), inspectionRevision_ > 7},
+                    {QStringLiteral("redo_available"), false},
+                }));
+        } else if (method == QStringLiteral("inspector.commit")) {
+            if (parameters.value(QStringLiteral("base_revision")).toString() !=
+                QString::number(inspectionRevision_)) {
+                writeControl(failure(
+                    requestId,
+                    QStringLiteral("REVISION_CONFLICT"),
+                    QStringLiteral("Inspector revision conflict."),
+                    {{QStringLiteral("status"), QStringLiteral("conflict")},
+                     {QStringLiteral("revision"), QString::number(inspectionRevision_)},
+                     {QStringLiteral("issues"), QJsonArray{}}}));
+            } else {
+                ++inspectionRevision_;
+                writeControl(success(
+                    requestId,
+                    {{QStringLiteral("status"), QStringLiteral("accepted")},
+                     {QStringLiteral("base_revision"),
+                      parameters.value(QStringLiteral("base_revision"))},
+                     {QStringLiteral("revision"), QString::number(inspectionRevision_)},
+                     {QStringLiteral("issues"), QJsonArray{}},
+                     {QStringLiteral("affected_model_paths"),
+                      QJsonArray{QStringLiteral("asset.breaker.1")}},
+                     {QStringLiteral("affected_view_ids"),
+                      QJsonArray{QStringLiteral("view.sld.1")}},
+                     {QStringLiteral("invalidated_result_ids"), QJsonArray{}}}));
+            }
+        } else if (method == QStringLiteral("inspector.undo") ||
+                   method == QStringLiteral("inspector.redo")) {
+            ++inspectionRevision_;
+            writeControl(success(
+                requestId,
+                {{QStringLiteral("status"), QStringLiteral("accepted")},
+                 {QStringLiteral("revision"), QString::number(inspectionRevision_)},
+                 {QStringLiteral("issues"), QJsonArray{}}}));
         } else if (method == QStringLiteral("worker.start")) {
             workerRunning_ = true;
             writeControl(success(requestId,
@@ -234,6 +306,7 @@ class MockConnection final : public QObject {
     bool ignoreAuthentication_{false};
     bool authenticated_{false};
     bool workerRunning_{false};
+    quint64 inspectionRevision_{7};
 };
 
 } // namespace

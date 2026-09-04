@@ -35,17 +35,12 @@ void StudioMainWindow::createPanels() {
     projectAction->setCheckable(true);
     viewMenu->insertAction(panelInsertionAnchor, projectAction);
 
+    schemaInspector_ = new inspector::SchemaInspectorWidget;
     StudioDockWidget* inspectorPanel = addPanel(
         QStringLiteral("panel.inspector"),
         tr("Inspector"),
         Qt::RightDockWidgetArea,
-        createInformationPanel(
-            tr("No Selection"),
-            tr(
-                "Selecting a semantic symbol will request authoritative fields, units, "
-                "validation, results, and provenance from Julia."
-            )
-        )
+        schemaInspector_
     );
     QAction* inspectorAction = registerAction(
         QStringLiteral("view.inspector"),

@@ -4,6 +4,7 @@
 #include "aimora/studio/commands/command_registry.hpp"
 #include "aimora/studio/commands/drawing_interaction.hpp"
 #include "aimora/studio/inspector/panel_state.hpp"
+#include "aimora/studio/inspector/schema_inspector_widget.hpp"
 #include "aimora/studio/renderer/scene_surface.hpp"
 #include "aimora/studio/themes/theme_system.hpp"
 
@@ -20,6 +21,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 
 class QAction;
 class QActionGroup;
@@ -27,6 +29,10 @@ class QCloseEvent;
 class QEvent;
 class QLineEdit;
 class QMenu;
+
+namespace aimora::studio::protocol {
+class ServiceClient;
+}
 
 namespace aimora::studio::shell {
 
@@ -40,6 +46,8 @@ class DrawingWorkspace final : public QWidget {
   public:
     using CanonicalEditHandler =
         std::function<bool(const commands::CanonicalEditRequest& request)>;
+    using InspectionSelectionHandler =
+        std::function<void(const QVector<canvas::SceneItemId>& selectedIds, bool quickEdit)>;
 
     explicit DrawingWorkspace(QWidget* parent = nullptr);
 
@@ -49,6 +57,7 @@ class DrawingWorkspace final : public QWidget {
     [[nodiscard]] const themes::ThemeTokens& themeTokens() const noexcept;
     void setElectricalPortSnaps(QVector<commands::SnapCandidate> ports);
     void setCanonicalEditHandler(CanonicalEditHandler handler);
+    void setInspectionSelectionHandler(InspectionSelectionHandler handler);
     [[nodiscard]] bool executeCommandText(QStringView input);
     void setGridSnapEnabled(bool enabled);
     void setOrthoEnabled(bool enabled);
@@ -81,6 +90,7 @@ class DrawingWorkspace final : public QWidget {
     commands::DrawingCommandSession commandSession_;
     QVector<commands::SnapCandidate> electricalPortSnaps_;
     CanonicalEditHandler canonicalEditHandler_;
+    InspectionSelectionHandler inspectionSelectionHandler_;
     QPointF pointerPixel_;
     QPointF dragOriginPixel_;
     QPointF previousPanPixel_;
@@ -135,12 +145,16 @@ class WorkspaceSettings final {
 
 class StudioMainWindow final : public QMainWindow {
   public:
+    using InspectionIdentityResolver = std::function<std::optional<inspector::InspectionIdentity>(
+        const QVector<canvas::SceneItemId>& selectedIds)>;
+
     StudioMainWindow(themes::ThemeController& themeController,
                      QSettings& settings,
                      QWidget* parent = nullptr);
     ~StudioMainWindow() override = default;
 
     [[nodiscard]] DrawingWorkspace* drawingWorkspace() const noexcept;
+    [[nodiscard]] inspector::SchemaInspectorWidget* schemaInspector() const noexcept;
     [[nodiscard]] QAction* commandAction(QStringView commandId) const;
     [[nodiscard]] StudioDockWidget* panel(QStringView panelId) const;
     [[nodiscard]] QList<StudioDockWidget*> panels() const;
@@ -150,6 +164,8 @@ class StudioMainWindow final : public QMainWindow {
 
     void saveWorkspace();
     void resetWorkspace();
+    void bindInspectionService(protocol::ServiceClient* client);
+    void setInspectionIdentityResolver(InspectionIdentityResolver resolver);
 
   protected:
     void closeEvent(QCloseEvent* event) override;
@@ -189,7 +205,9 @@ class StudioMainWindow final : public QMainWindow {
     themes::ThemeController& themeController_;
     WorkspaceSettings workspaceSettings_;
     commands::CommandRegistry commandRegistry_;
+    InspectionIdentityResolver inspectionIdentityResolver_;
     DrawingWorkspace* drawingWorkspace_{nullptr};
+    inspector::SchemaInspectorWidget* schemaInspector_{nullptr};
     QLineEdit* commandLine_{nullptr};
     QActionGroup* themeActionGroup_{nullptr};
     QHash<QString, QMenu*> menus_;

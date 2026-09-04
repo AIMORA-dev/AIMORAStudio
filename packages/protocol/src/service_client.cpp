@@ -250,6 +250,9 @@ void ServiceClient::processControlFrame(const ServiceFrame& frame) {
     const QString failureCode = response->failure.has_value() ? response->failure->code : QString{};
     const QString failureMessage =
         response->failure.has_value() ? response->failure->message : QString{};
+    emit responseFailureDetailsReceived(response->requestId,
+                                        response->failure.has_value() ? response->failure->details
+                                                                      : QJsonObject{});
     emit responseReceived(
         response->requestId, response->ok, response->result, failureCode, failureMessage);
 

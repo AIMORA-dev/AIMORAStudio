@@ -288,6 +288,9 @@ DrawingWorkspace::DrawingWorkspace(QWidget* parent) : QWidget{parent} {
 void DrawingWorkspace::setScene(std::shared_ptr<const canvas::RetainedScene> scene) {
     sceneSurface_->setScene(std::move(scene));
     selection_.clear();
+    if(inspectionSelectionHandler_) {
+        inspectionSelectionHandler_({}, false);
+    }
     interactionSurface_->update();
 }
 
@@ -336,6 +339,10 @@ void DrawingWorkspace::setElectricalPortSnaps(QVector<commands::SnapCandidate> p
 
 void DrawingWorkspace::setCanonicalEditHandler(CanonicalEditHandler handler) {
     canonicalEditHandler_ = std::move(handler);
+}
+
+void DrawingWorkspace::setInspectionSelectionHandler(InspectionSelectionHandler handler) {
+    inspectionSelectionHandler_ = std::move(handler);
 }
 
 bool DrawingWorkspace::executeCommandText(QStringView input) {
@@ -496,6 +503,9 @@ bool DrawingWorkspace::eventFilter(QObject* watched, QEvent* event) {
             sceneSurface_->hitTest(mouseEvent->position(), snapSettings_.tolerancePixels);
         if (!hits.isEmpty()) {
             selection_.applyHit(hits, selectionOperation(mouseEvent->modifiers()));
+            if(inspectionSelectionHandler_) {
+                inspectionSelectionHandler_(selection_.selectedIds(), false);
+            }
             interactionSurface_->update();
             return true;
         }
@@ -527,12 +537,19 @@ bool DrawingWorkspace::eventFilter(QObject* watched, QEvent* event) {
             selection_.applyMarquee(records, marqueeSceneArea_, crossing, operation);
         }
         marqueeActive_ = false;
+        if(inspectionSelectionHandler_) {
+            inspectionSelectionHandler_(selection_.selectedIds(), false);
+        }
         interactionSurface_->update();
         return true;
     }
     case QEvent::MouseButtonDblClick:
         if (commandSession_.isActive()) {
             completeCommand();
+            return true;
+        }
+        if(inspectionSelectionHandler_ && !selection_.selectedIds().isEmpty()) {
+            inspectionSelectionHandler_(selection_.selectedIds(), true);
             return true;
         }
         return false;

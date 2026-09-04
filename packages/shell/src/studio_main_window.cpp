@@ -45,6 +45,31 @@ StudioMainWindow::StudioMainWindow(
     configureWindow();
     createMenus();
     createPanels();
+    drawingWorkspace_->setInspectionSelectionHandler(
+        [this](const QVector<canvas::SceneItemId>& selectedIds, bool quickEdit) {
+            if(selectedIds.isEmpty()) {
+                schemaInspector_->clearInspection();
+                return;
+            }
+            if(!inspectionIdentityResolver_) {
+                return;
+            }
+            const auto identity = inspectionIdentityResolver_(selectedIds);
+            if(!identity.has_value()) {
+                schemaInspector_->clearInspection();
+                return;
+            }
+            schemaInspector_->inspect(*identity);
+            if(StudioDockWidget* inspectorDock = panel(QStringView{u"panel.inspector"});
+               inspectorDock != nullptr) {
+                inspectorDock->show();
+                inspectorDock->raise();
+                if(quickEdit) {
+                    schemaInspector_->setFocus(Qt::ShortcutFocusReason);
+                }
+            }
+        }
+    );
 
     connect(
         &themeController_,
@@ -68,6 +93,18 @@ StudioMainWindow::StudioMainWindow(
 
 DrawingWorkspace* StudioMainWindow::drawingWorkspace() const noexcept {
     return drawingWorkspace_;
+}
+
+inspector::SchemaInspectorWidget* StudioMainWindow::schemaInspector() const noexcept {
+    return schemaInspector_;
+}
+
+void StudioMainWindow::bindInspectionService(protocol::ServiceClient* client) {
+    schemaInspector_->bindServiceClient(client);
+}
+
+void StudioMainWindow::setInspectionIdentityResolver(InspectionIdentityResolver resolver) {
+    inspectionIdentityResolver_ = std::move(resolver);
 }
 
 QAction* StudioMainWindow::commandAction(QStringView commandId) const {

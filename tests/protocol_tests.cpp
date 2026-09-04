@@ -48,25 +48,28 @@ void ProtocolTests::generatedBindingsMatchCanonicalSchema() {
             generated::protocolVersion.data(),
             static_cast<qsizetype>(generated::protocolVersion.size())
         ),
-        QStringLiteral("1.0")
+        QStringLiteral("1.1")
     );
     QCOMPARE(
         QString::fromLatin1(
             generated::serviceVersion.data(),
             static_cast<qsizetype>(generated::serviceVersion.size())
         ),
-        QStringLiteral("0.1.0")
+        QStringLiteral("0.2.0")
     );
     QCOMPARE(
         QString::fromLatin1(
             generated::schemaSha256.data(),
             static_cast<qsizetype>(generated::schemaSha256.size())
         ),
-        QStringLiteral("ebf63b6e991532dc1fa7b32f660d6050708a8dd03243b03ce95ae98a2a02c8a8")
+        QStringLiteral("f20a87f79c6a04be59c9e4971753b480dd0a0b3eb09ed2dfce657b4ad02fac38")
     );
     QCOMPARE(generated::frameHeaderBytes, 12);
     QCOMPARE(generated::methodName(generated::Method::ServiceHello),
              QStringLiteral("service.hello"));
+    QCOMPARE(generated::methodName(generated::Method::InspectorCommit),
+             QStringLiteral("inspector.commit"));
+    QVERIFY(generated::parseMethod(QStringView{u"inspector.describe"}).has_value());
     QVERIFY(generated::parseMethod(QStringView{u"result.window"}).has_value());
     QVERIFY(!generated::parseMethod(QStringView{u"private.solver"}).has_value());
 }
@@ -126,7 +129,7 @@ void ProtocolTests::binaryPayloadRoundTrips() {
 
 void ProtocolTests::responseEnvelopeIsStrict() {
     const QJsonObject valid{
-        {QStringLiteral("protocol_version"), QStringLiteral("1.0")},
+        {QStringLiteral("protocol_version"), QStringLiteral("1.1")},
         {QStringLiteral("request_id"), QStringLiteral("test-2")},
         {QStringLiteral("ok"), true},
         {QStringLiteral("result"), QJsonObject{{QStringLiteral("value"), 1}}},
@@ -200,6 +203,63 @@ void ProtocolTests::serviceProcessAuthenticatesAndSupportsLifecycle() {
             .toString(),
         QStringLiteral("target-1")
     );
+
+    const QJsonObject inspectorIdentity{
+        {QStringLiteral("project_id"), QStringLiteral("project.1")},
+        {QStringLiteral("asset_id"), QStringLiteral("asset.breaker.1")},
+        {QStringLiteral("projection_id"), QStringLiteral("projection.breaker.1")},
+        {QStringLiteral("view_id"), QStringLiteral("view.sld.1")},
+    };
+    const QString describeId = process.client()->sendRequest(
+        generated::Method::InspectorDescribe, inspectorIdentity);
+    QVERIFY(!describeId.isEmpty());
+    QTRY_COMPARE_WITH_TIMEOUT(responseSpy.count(), 1, 3000);
+    const QList<QVariant> describeArguments = responseSpy.takeFirst();
+    QVERIFY(describeArguments.at(1).toBool());
+    QCOMPARE(describeArguments.at(2)
+                 .toJsonObject()
+                 .value(QStringLiteral("schema_version"))
+                 .toString(),
+             QStringLiteral("1.0.0"));
+
+    const QJsonObject inspectorCommit{
+        {QStringLiteral("project_id"), QStringLiteral("project.1")},
+        {QStringLiteral("asset_id"), QStringLiteral("asset.breaker.1")},
+        {QStringLiteral("base_revision"), QStringLiteral("7")},
+        {QStringLiteral("edits"),
+         QJsonArray{QJsonObject{{QStringLiteral("path"), QStringLiteral("ratings.voltage")},
+                                {QStringLiteral("value"), 13.8},
+                                {QStringLiteral("display_unit"), QStringLiteral("kV")}}}},
+    };
+    const QString commitId = process.client()->sendRequest(
+        generated::Method::InspectorCommit, inspectorCommit);
+    QVERIFY(!commitId.isEmpty());
+    QTRY_COMPARE_WITH_TIMEOUT(responseSpy.count(), 1, 3000);
+    const QList<QVariant> commitArguments = responseSpy.takeFirst();
+    QVERIFY(commitArguments.at(1).toBool());
+    QCOMPARE(commitArguments.at(2)
+                 .toJsonObject()
+                 .value(QStringLiteral("revision"))
+                 .toString(),
+             QStringLiteral("8"));
+
+    QSignalSpy detailsSpy{
+        process.client(),
+        &aimora::studio::protocol::ServiceClient::responseFailureDetailsReceived
+    };
+    const QString conflictId = process.client()->sendRequest(
+        generated::Method::InspectorCommit, inspectorCommit);
+    QVERIFY(!conflictId.isEmpty());
+    QTRY_COMPARE_WITH_TIMEOUT(responseSpy.count(), 1, 3000);
+    const QList<QVariant> conflictArguments = responseSpy.takeFirst();
+    QVERIFY(!conflictArguments.at(1).toBool());
+    QCOMPARE(conflictArguments.at(3).toString(), QStringLiteral("REVISION_CONFLICT"));
+    QVERIFY(!detailsSpy.isEmpty());
+    QCOMPARE(detailsSpy.takeLast().at(1)
+                 .toJsonObject()
+                 .value(QStringLiteral("revision"))
+                 .toString(),
+             QStringLiteral("8"));
 
     const QString workerId = process.client()->sendRequest(generated::Method::WorkerStart);
     QVERIFY(!workerId.isEmpty());

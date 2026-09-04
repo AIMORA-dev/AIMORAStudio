@@ -54,6 +54,7 @@ class ServiceClient final : public QObject {
                           const QJsonObject& result,
                           const QString& errorCode,
                           const QString& errorMessage);
+    void responseFailureDetailsReceived(const QString& requestId, const QJsonObject& details);
     void binaryPayloadReceived(const QJsonObject& metadata, const QByteArray& data);
     void failed(const QString& code, const QString& message);
     void disconnected();
