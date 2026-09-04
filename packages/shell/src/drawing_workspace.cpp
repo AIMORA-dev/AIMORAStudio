@@ -92,19 +92,19 @@ void appendSegmentCandidates(QVector<commands::SnapCandidate>& candidates,
     }
     const QPointF start = segments.starts[record.index];
     const QPointF end = segments.ends[record.index];
-    candidates.append({record.id, start, commands::SnapKind::Endpoint});
-    candidates.append({record.id, end, commands::SnapKind::Endpoint});
-    candidates.append({record.id, (start + end) / 2.0, commands::SnapKind::Midpoint});
+    candidates.append({record.id, start, commands::SnapKind::Endpoint, {}});
+    candidates.append({record.id, end, commands::SnapKind::Endpoint, {}});
+    candidates.append({record.id, (start + end) / 2.0, commands::SnapKind::Midpoint, {}});
 }
 
 void appendBoundsCandidates(QVector<commands::SnapCandidate>& candidates,
                             const canvas::SpatialRecord& record) {
     const QRectF bounds = record.bounds.normalized();
-    candidates.append({record.id, bounds.center(), commands::SnapKind::Center});
-    candidates.append({record.id, bounds.topLeft(), commands::SnapKind::Endpoint});
-    candidates.append({record.id, bounds.topRight(), commands::SnapKind::Endpoint});
-    candidates.append({record.id, bounds.bottomLeft(), commands::SnapKind::Endpoint});
-    candidates.append({record.id, bounds.bottomRight(), commands::SnapKind::Endpoint});
+    candidates.append({record.id, bounds.center(), commands::SnapKind::Center, {}});
+    candidates.append({record.id, bounds.topLeft(), commands::SnapKind::Endpoint, {}});
+    candidates.append({record.id, bounds.topRight(), commands::SnapKind::Endpoint, {}});
+    candidates.append({record.id, bounds.bottomLeft(), commands::SnapKind::Endpoint, {}});
+    candidates.append({record.id, bounds.bottomRight(), commands::SnapKind::Endpoint, {}});
 }
 
 void appendIntersections(QVector<commands::SnapCandidate>& candidates,
@@ -129,7 +129,8 @@ void appendIntersections(QVector<commands::SnapCandidate>& candidates,
             if (firstLine.intersects(secondLine, &intersection) == QLineF::BoundedIntersection) {
                 candidates.append({std::min(records[first].id, records[second].id),
                                    intersection,
-                                   commands::SnapKind::Intersection});
+                                   commands::SnapKind::Intersection,
+                                   {}});
             }
         }
     }
@@ -701,11 +702,11 @@ void DrawingWorkspace::completeCommand() {
             request->semanticIds.append(semanticId);
         }
     }
-    static_cast<void>(dispatchCanonicalEdit(std::move(*request)));
+    static_cast<void>(dispatchCanonicalEdit(*request));
     interactionSurface_->update();
 }
 
-bool DrawingWorkspace::dispatchCanonicalEdit(commands::CanonicalEditRequest request) {
+bool DrawingWorkspace::dispatchCanonicalEdit(const commands::CanonicalEditRequest& request) {
     if (!canonicalEditHandler_ || request.commandId.isEmpty()) {
         return false;
     }
@@ -733,7 +734,7 @@ bool DrawingWorkspace::requestEquipmentPlacement(const QString& catalogId,
     }
     request->attributes.insert(QStringLiteral("catalog_id"), catalogId);
     request->attributes.insert(QStringLiteral("assembly"), assembly);
-    return dispatchCanonicalEdit(std::move(*request));
+    return dispatchCanonicalEdit(*request);
 }
 
 } // namespace aimora::studio::shell

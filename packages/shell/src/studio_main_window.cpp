@@ -110,9 +110,8 @@ void StudioMainWindow::bindInspectionService(protocol::ServiceClient* client) {
 void StudioMainWindow::bindSemanticEditService(protocol::ServiceClient* client,
                                                QString projectId,
                                                QString baseRevision) {
-    if (semanticEditClient_ != nullptr) {
-        disconnect(semanticResponseConnection_);
-    }
+    disconnect(semanticResponseConnection_);
+    disconnect(semanticClientDestroyedConnection_);
     semanticEditClient_ = client;
     semanticProjectId_ = std::move(projectId);
     semanticRevision_ = std::move(baseRevision);
@@ -124,6 +123,13 @@ void StudioMainWindow::bindSemanticEditService(protocol::ServiceClient* client,
     if (client == nullptr) {
         return;
     }
+    semanticClientDestroyedConnection_ = connect(client, &QObject::destroyed, this, [this]() {
+        semanticEditClient_ = nullptr;
+        semanticProjectId_.clear();
+        semanticRevision_.clear();
+        pendingSemanticRequests_.clear();
+        drawingWorkspace_->setCanonicalEditHandler({});
+    });
     semanticResponseConnection_ = connect(
         client,
         &protocol::ServiceClient::responseReceived,

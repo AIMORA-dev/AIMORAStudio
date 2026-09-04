@@ -84,7 +84,7 @@ class DrawingWorkspace final : public QWidget {
     void updatePointer(const QPointF& pixelPoint);
     void applyViewport();
     void completeCommand();
-    [[nodiscard]] bool dispatchCanonicalEdit(commands::CanonicalEditRequest request);
+    [[nodiscard]] bool dispatchCanonicalEdit(const commands::CanonicalEditRequest& request);
 
     themes::ThemeTokens tokens_{themes::lightThemeTokens()};
     renderer::SceneSurface* sceneSurface_{nullptr};
@@ -219,11 +219,12 @@ class StudioMainWindow final : public QMainWindow {
     QHash<QString, QAction*> actions_;
     QHash<QString, StudioDockWidget*> panels_;
     QHash<QString, Qt::DockWidgetArea> defaultDockAreas_;
-    QPointer<protocol::ServiceClient> semanticEditClient_;
+    protocol::ServiceClient* semanticEditClient_{nullptr};
     QString semanticProjectId_;
     QString semanticRevision_;
     QSet<QString> pendingSemanticRequests_;
     QMetaObject::Connection semanticResponseConnection_;
+    QMetaObject::Connection semanticClientDestroyedConnection_;
     WorkspaceRestoreStatus restoreStatus_{WorkspaceRestoreStatus::NoSavedState};
 };
 
