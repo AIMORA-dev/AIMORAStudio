@@ -40,6 +40,7 @@ class InteractionTests final : public QObject {
     void snapResolverAppliesModesAndDeterministicPriority();
     void selectionSupportsHitMarqueeGripsAndVirtualNodes();
     void commandSessionEmitsOneRequestOnlyWhenCompleted();
+    void automaticLayoutCommandsRemainTransportOnly();
     void workspaceRoutesLocalInteractionAndOneCommitCallback();
     void semanticConnectionsRequireStablePortIdentities();
     void catalogPlacementDispatchesStableIdentityAndDisplayPoint();
@@ -156,6 +157,27 @@ void InteractionTests::commandSessionEmitsOneRequestOnlyWhenCompleted() {
     QCOMPARE(session.completedEditCount(), quint64{1});
     QVERIFY(!session.complete({}).has_value());
     QCOMPARE(session.completedEditCount(), quint64{1});
+}
+
+void InteractionTests::automaticLayoutCommandsRemainTransportOnly() {
+    using namespace aimora::studio::commands;
+    DrawingCommandSession session;
+
+    const auto completeLayout = [&session](QStringView alias, QStringView expectedOperation) {
+        QCOMPARE(static_cast<int>(session.begin(alias)),
+                 static_cast<int>(CommandStartResult::Started));
+        const auto request = session.complete({});
+        QVERIFY(request.has_value());
+        QCOMPARE(request->commandId, expectedOperation.toString());
+        QVERIFY(request->points.isEmpty());
+        QVERIFY(request->semanticIds.isEmpty());
+    };
+
+    completeLayout(QStringView{u"layoutinitial"}, QStringView{u"layout.initial"});
+    completeLayout(QStringView{u"layout"}, QStringView{u"layout.full"});
+    completeLayout(QStringView{u"layoutlocal"}, QStringView{u"layout.local"});
+    completeLayout(QStringView{u"layoutincremental"}, QStringView{u"layout.incremental"});
+    QCOMPARE(session.completedEditCount(), quint64{4});
 }
 
 void InteractionTests::workspaceRoutesLocalInteractionAndOneCommitCallback() {

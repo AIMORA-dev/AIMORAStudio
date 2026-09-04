@@ -430,7 +430,12 @@ DrawingCommandSession::DrawingCommandSession()
                {QStringLiteral("place"), QStringLiteral("equipment.place")},
                {QStringLiteral("junction"), QStringLiteral("junction.update")},
                {QStringLiteral("removeprojection"), QStringLiteral("projection.remove")},
-               {QStringLiteral("deleteasset"), QStringLiteral("asset.delete")}} {}
+               {QStringLiteral("deleteasset"), QStringLiteral("asset.delete")},
+               {QStringLiteral("layout"), QStringLiteral("layout.full")},
+               {QStringLiteral("layoutinitial"), QStringLiteral("layout.initial")},
+               {QStringLiteral("layoutfull"), QStringLiteral("layout.full")},
+               {QStringLiteral("layoutlocal"), QStringLiteral("layout.local")},
+               {QStringLiteral("layoutincremental"), QStringLiteral("layout.incremental")}} {}
 
 CommandStartResult DrawingCommandSession::begin(QStringView commandOrAlias) {
     if (isActive()) {
@@ -550,6 +555,11 @@ qsizetype DrawingCommandSession::minimumPointCount(QStringView commandId) noexce
     }
     if (commandId == QStringView{u"projection.remove"} ||
         commandId == QStringView{u"asset.delete"}) {
+        return 0;
+    }
+    if (commandId == QStringView{u"layout.initial"} || commandId == QStringView{u"layout.full"} ||
+        commandId == QStringView{u"layout.local"} ||
+        commandId == QStringView{u"layout.incremental"}) {
         return 0;
     }
     return std::numeric_limits<qsizetype>::max();

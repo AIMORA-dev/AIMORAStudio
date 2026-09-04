@@ -160,7 +160,8 @@ bool StudioMainWindow::dispatchSemanticEdit(const commands::CanonicalEditRequest
     if (semanticEditClient_ == nullptr || !semanticEditClient_->isReady() ||
         !semanticEditClient_->capabilities().contains(QStringLiteral("semantic.transaction")) ||
         semanticProjectId_.trimmed().isEmpty() || semanticRevision_.trimmed().isEmpty() ||
-        request.semanticIds.isEmpty()) {
+        (request.semanticIds.isEmpty() && request.commandId != QStringLiteral("layout.initial") &&
+         request.commandId != QStringLiteral("layout.full"))) {
         return false;
     }
     QString operation = request.commandId;
@@ -176,6 +177,10 @@ bool StudioMainWindow::dispatchSemanticEdit(const commands::CanonicalEditRequest
         QStringLiteral("projection.remove"),
         QStringLiteral("asset.delete"),
         QStringLiteral("cross_reference.update"),
+        QStringLiteral("layout.initial"),
+        QStringLiteral("layout.full"),
+        QStringLiteral("layout.local"),
+        QStringLiteral("layout.incremental"),
     };
     if (!supportedOperations.contains(operation)) {
         return false;
