@@ -90,8 +90,8 @@ void InteractionTests::snapResolverAppliesModesAndDeterministicPriority() {
     SnapSettings settings;
     settings.gridEnabled = false;
     const QVector<SnapCandidate> candidates{
-        {9, QPointF{3.0, 3.0}, SnapKind::Endpoint},
-        {4, QPointF{3.0, 3.0}, SnapKind::ElectricalPort},
+        {9, QPointF{3.0, 3.0}, SnapKind::Endpoint, {}},
+        {4, QPointF{3.0, 3.0}, SnapKind::ElectricalPort, {}},
     };
     const SnapResult port =
         SnapResolver{}.resolve({3.5, 3.0}, std::nullopt, viewport, extent, candidates, settings);
@@ -224,7 +224,7 @@ void InteractionTests::catalogPlacementDispatchesStableIdentityAndDisplayPoint()
     QVERIFY(received.has_value());
     QCOMPARE(received->commandId, QStringLiteral("equipment.place"));
     QCOMPARE(received->semanticIds, QStringList{catalogId});
-    QCOMPARE(received->points, QVector<QPointF>{QPointF{25.0, 40.0}});
+    QCOMPARE(received->points, (QVector<QPointF>{QPointF{25.0, 40.0}}));
     QCOMPARE(received->attributes.value(QStringLiteral("catalog_id")).toString(), catalogId);
     QVERIFY(received->attributes.value(QStringLiteral("assembly")).toBool());
 }
