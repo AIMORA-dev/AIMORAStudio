@@ -10,6 +10,7 @@ target_link_libraries(
         AIMORA::StudioInspector
         AIMORA::StudioCommands
         AIMORA::StudioThemes
+        Qt6::Widgets
         Qt6::Test
 )
 
@@ -100,7 +101,7 @@ add_test(NAME aimora.canvas COMMAND aimora_studio_canvas_tests)
 add_test(NAME aimora.renderer COMMAND aimora_studio_renderer_tests)
 add_test(NAME aimora.protocol COMMAND aimora_studio_protocol_tests)
 set_tests_properties(
-    aimora.shell aimora.canvas aimora.renderer
+    aimora.foundation aimora.shell aimora.canvas aimora.renderer
     PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )

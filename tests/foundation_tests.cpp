@@ -123,6 +123,6 @@ void FoundationTests::protocolConfigurationRequiresBoundedAuthenticatedLocalStat
     QVERIFY(!invalidLimits.isValid());
 }
 
-QTEST_GUILESS_MAIN(FoundationTests)
+QTEST_MAIN(FoundationTests)
 
 #include "foundation_tests.moc"

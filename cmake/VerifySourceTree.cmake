@@ -17,6 +17,19 @@ set(required_paths
     "packages/core/CMakeLists.txt"
     "packages/protocol/CMakeLists.txt"
     "packages/canvas/CMakeLists.txt"
+    "packages/canvas/include/aimora/studio/canvas/painter_scene_renderer.hpp"
+    "packages/canvas/include/aimora/studio/canvas/retained_scene.hpp"
+    "packages/canvas/include/aimora/studio/canvas/scene_cache.hpp"
+    "packages/canvas/include/aimora/studio/canvas/spatial_index.hpp"
+    "packages/canvas/src/painter_scene_renderer.cpp"
+    "packages/canvas/src/retained_scene.cpp"
+    "packages/canvas/src/scene_cache.cpp"
+    "packages/canvas/src/spatial_index.cpp"
+    "packages/renderer/CMakeLists.txt"
+    "packages/renderer/include/aimora/studio/renderer/scene_surface.hpp"
+    "packages/renderer/shaders/scene.frag"
+    "packages/renderer/shaders/scene.vert"
+    "packages/renderer/src/scene_surface.cpp"
     "packages/inspector/CMakeLists.txt"
     "packages/commands/CMakeLists.txt"
     "packages/themes/CMakeLists.txt"
@@ -32,6 +45,8 @@ set(required_paths
     "packages/shell/src/workspace_settings.cpp"
     "tests/CMakeLists.txt"
     "tests/foundation_tests.cpp"
+    "tests/canvas_tests.cpp"
+    "tests/renderer_tests.cpp"
     "tests/shell_tests.cpp"
     "tests/fixtures/theme-light.json"
     "tests/fixtures/theme-dark.json"
@@ -65,6 +80,7 @@ file(
     "${AIMORA_SOURCE_DIR}/*.cjs"
     "${AIMORA_SOURCE_DIR}/*.qml"
 )
+list(FILTER forbidden_client_files EXCLUDE REGEX "/build[^/]*/")
 
 if(forbidden_client_files)
     list(JOIN forbidden_client_files "\n" forbidden_listing)

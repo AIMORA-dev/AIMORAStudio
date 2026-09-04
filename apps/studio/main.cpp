@@ -76,6 +76,7 @@ int runServiceSmoke(
             : allowedRoots,
         .workerProgram = workerProgram,
         .workerArguments = workerArguments,
+        .limits = {},
         .startupTimeoutMs = 20000,
         .shutdownTimeoutMs = 5000,
         .maximumAutomaticRestarts = 0,
