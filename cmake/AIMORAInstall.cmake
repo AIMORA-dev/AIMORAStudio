@@ -7,6 +7,7 @@ set(AIMORA_STUDIO_LIBRARY_TARGETS
     aimora_studio_canvas
     aimora_studio_renderer
     aimora_studio_inspector
+    aimora_studio_catalog
     aimora_studio_commands
     aimora_studio_themes
     aimora_studio_shell
@@ -23,7 +24,7 @@ install(
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
-foreach(package_name IN ITEMS core protocol canvas renderer inspector commands themes shell)
+foreach(package_name IN ITEMS core protocol canvas renderer inspector catalog commands themes shell)
     install(
         DIRECTORY "${PROJECT_SOURCE_DIR}/packages/${package_name}/include/"
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}

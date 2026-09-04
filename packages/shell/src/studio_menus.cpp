@@ -185,10 +185,14 @@ void StudioMainWindow::createMenus() {
         *menu(QStringView{u"modify"}),
         tr("Modify commands are introduced by the Power Drafting Profile packet.")
     );
-    addUnavailableAction(
-        *menu(QStringView{u"electrical"}),
-        tr("Semantic equipment placement starts with the topology-safe SLD packet.")
+    QAction* equipmentLibraryAction = registerAction(
+        QStringLiteral("electrical.equipment-library"),
+        tr("Equipment Library"),
+        QStringLiteral("Electrical"),
+        QKeySequence{QStringLiteral("Ctrl+Shift+L")}
     );
+    equipmentLibraryAction->setCheckable(true);
+    menu(QStringView{u"electrical"})->addAction(equipmentLibraryAction);
     addUnavailableAction(
         *menu(QStringView{u"studies"}),
         tr("Only accepted studies appear after the Julia service and study UI packets.")

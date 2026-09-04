@@ -3,6 +3,7 @@
 
 #include "aimora/studio/commands/command_registry.hpp"
 #include "aimora/studio/commands/drawing_interaction.hpp"
+#include "aimora/studio/catalog/catalog_library.hpp"
 #include "aimora/studio/inspector/panel_state.hpp"
 #include "aimora/studio/inspector/schema_inspector_widget.hpp"
 #include "aimora/studio/renderer/scene_surface.hpp"
@@ -154,6 +155,7 @@ class StudioMainWindow final : public QMainWindow {
     ~StudioMainWindow() override = default;
 
     [[nodiscard]] DrawingWorkspace* drawingWorkspace() const noexcept;
+    [[nodiscard]] catalog::CatalogLibraryWidget* catalogLibrary() const noexcept;
     [[nodiscard]] inspector::SchemaInspectorWidget* schemaInspector() const noexcept;
     [[nodiscard]] QAction* commandAction(QStringView commandId) const;
     [[nodiscard]] StudioDockWidget* panel(QStringView panelId) const;
@@ -207,6 +209,7 @@ class StudioMainWindow final : public QMainWindow {
     commands::CommandRegistry commandRegistry_;
     InspectionIdentityResolver inspectionIdentityResolver_;
     DrawingWorkspace* drawingWorkspace_{nullptr};
+    catalog::CatalogLibraryWidget* catalogLibrary_{nullptr};
     inspector::SchemaInspectorWidget* schemaInspector_{nullptr};
     QLineEdit* commandLine_{nullptr};
     QActionGroup* themeActionGroup_{nullptr};

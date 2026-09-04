@@ -25,6 +25,7 @@ target_link_libraries(
     PUBLIC
         AIMORA::StudioCore
         AIMORA::StudioCommands
+        AIMORA::StudioCatalog
         AIMORA::StudioInspector
         AIMORA::StudioRenderer
         AIMORA::StudioThemes

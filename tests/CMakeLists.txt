@@ -115,10 +115,23 @@ target_link_libraries(
 )
 aimora_target_defaults(aimora_studio_inspector_tests)
 
+add_executable(aimora_studio_catalog_tests catalog_tests.cpp)
+target_link_libraries(
+    aimora_studio_catalog_tests
+    PRIVATE
+        AIMORA::StudioCatalog
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+)
+aimora_target_defaults(aimora_studio_catalog_tests)
+
 if(AIMORA_ENABLE_CLANG_TIDY)
     set_property(TARGET aimora_studio_protocol_tests PROPERTY CXX_CLANG_TIDY "")
     set_property(TARGET aimora_studio_mock_service PROPERTY CXX_CLANG_TIDY "")
     set_property(TARGET aimora_studio_inspector_tests PROPERTY CXX_CLANG_TIDY "")
+    set_property(TARGET aimora_studio_catalog_tests PROPERTY CXX_CLANG_TIDY "")
 endif()
 
 add_test(NAME aimora.foundation COMMAND aimora_studio_foundation_tests)
@@ -128,8 +141,10 @@ add_test(NAME aimora.renderer COMMAND aimora_studio_renderer_tests)
 add_test(NAME aimora.interaction COMMAND aimora_studio_interaction_tests)
 add_test(NAME aimora.protocol COMMAND aimora_studio_protocol_tests)
 add_test(NAME aimora.inspector COMMAND aimora_studio_inspector_tests)
+add_test(NAME aimora.catalog COMMAND aimora_studio_catalog_tests)
 set_tests_properties(
     aimora.foundation aimora.shell aimora.canvas aimora.renderer aimora.interaction aimora.inspector
+    aimora.catalog
     PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )

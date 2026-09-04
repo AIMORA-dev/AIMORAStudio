@@ -35,6 +35,17 @@ void StudioMainWindow::createPanels() {
     projectAction->setCheckable(true);
     viewMenu->insertAction(panelInsertionAnchor, projectAction);
 
+    catalogLibrary_ = new catalog::CatalogLibraryWidget;
+    StudioDockWidget* catalogPanel = addPanel(
+        QStringLiteral("panel.equipment-library"),
+        tr("Equipment Library"),
+        Qt::LeftDockWidgetArea,
+        catalogLibrary_
+    );
+    QAction* catalogAction =
+        commandAction(QStringView{u"electrical.equipment-library"});
+    viewMenu->insertAction(panelInsertionAnchor, catalogAction);
+
     schemaInspector_ = new inspector::SchemaInspectorWidget;
     StudioDockWidget* inspectorPanel = addPanel(
         QStringLiteral("panel.inspector"),
@@ -74,6 +85,7 @@ void StudioMainWindow::createPanels() {
 
     const QList<QPair<QAction*, StudioDockWidget*>> panelBindings{
         {projectAction, projectPanel},
+        {catalogAction, catalogPanel},
         {inspectorAction, inspectorPanel},
         {commandAction, commandPanel},
     };

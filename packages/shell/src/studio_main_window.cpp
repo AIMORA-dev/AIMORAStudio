@@ -95,6 +95,10 @@ DrawingWorkspace* StudioMainWindow::drawingWorkspace() const noexcept {
     return drawingWorkspace_;
 }
 
+catalog::CatalogLibraryWidget* StudioMainWindow::catalogLibrary() const noexcept {
+    return catalogLibrary_;
+}
+
 inspector::SchemaInspectorWidget* StudioMainWindow::schemaInspector() const noexcept {
     return schemaInspector_;
 }

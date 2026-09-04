@@ -307,6 +307,7 @@ int main(int argc, char* argv[]) {
             && window.menuTitles() == expectedMenus
             && window.centralWidget() == window.drawingWorkspace()
             && window.findChildren<QToolBar*>().isEmpty()
+            && window.catalogLibrary()->entryCount() == 16
             && themeController.tokens().isValid()
             && panelsHidden;
         QTextStream{stdout}
