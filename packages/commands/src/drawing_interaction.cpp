@@ -233,7 +233,7 @@ SnapResult SnapResolver::resolve(const QPointF& rawScenePoint,
                                  const QVector<SnapCandidate>& candidates,
                                  const SnapSettings& settings) const {
     if (!finitePoint(rawScenePoint) || !viewport.isValid(pixelExtent) || !settings.isValid()) {
-        return {rawScenePoint, SnapKind::None, 0, {}};
+        return {rawScenePoint, SnapKind::None, 0, {}, {}};
     }
     const QPointF constrained = constrainedPoint(rawScenePoint, anchor, settings);
     const QPointF targetPixel = viewport.pixelPoint(constrained, pixelExtent);
@@ -304,7 +304,7 @@ SnapResult SnapResolver::resolve(const QPointF& rawScenePoint,
     }
 
     if (best.kind == SnapKind::None) {
-        return {constrained, SnapKind::None, 0, {}};
+        return {constrained, SnapKind::None, 0, {}, {}};
     }
     return {best.point, best.kind, best.itemId, std::move(guides), best.semanticId};
 }
@@ -486,6 +486,7 @@ DrawingCommandSession::complete(const QVector<quint64>& selectedItemIds) {
         .points = points_,
         .selectedItemIds = selectedItemIds,
         .semanticIds = semanticIds,
+        .attributes = {},
     };
     ++nextSerial_;
     ++completedEditCount_;
