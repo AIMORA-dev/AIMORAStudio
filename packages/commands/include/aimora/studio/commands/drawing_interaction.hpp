@@ -2,12 +2,14 @@
 #pragma once
 
 #include <QHash>
+#include <QJsonObject>
 #include <QLineF>
 #include <QPointF>
 #include <QRectF>
 #include <QSet>
 #include <QSizeF>
 #include <QString>
+#include <QStringList>
 #include <QStringView>
 #include <QVector>
 #include <QtTypes>
@@ -30,7 +32,7 @@ struct CoordinateInput final {
 class CoordinateInterpreter final {
   public:
     [[nodiscard]] static std::optional<CoordinateInput> parse(QStringView input,
-                                                               const QPointF& anchor);
+                                                              const QPointF& anchor);
 };
 
 struct PrecisionViewport final {
@@ -44,9 +46,8 @@ struct PrecisionViewport final {
                                      const QSizeF& pixelExtent) const noexcept;
     [[nodiscard]] QPointF pixelPoint(const QPointF& scene,
                                      const QSizeF& pixelExtent) const noexcept;
-    [[nodiscard]] bool zoomAt(const QPointF& pixel,
-                              const QSizeF& pixelExtent,
-                              qreal wheelSteps) noexcept;
+    [[nodiscard]] bool
+    zoomAt(const QPointF& pixel, const QSizeF& pixelExtent, qreal wheelSteps) noexcept;
     void panBy(const QPointF& pixelDelta) noexcept;
 };
 
@@ -65,6 +66,7 @@ struct SnapCandidate final {
     quint64 itemId{0};
     QPointF point;
     SnapKind kind{SnapKind::Endpoint};
+    QString semanticId;
 };
 
 struct AlignmentGuide final {
@@ -91,6 +93,7 @@ struct SnapResult final {
     SnapKind kind{SnapKind::None};
     quint64 itemId{0};
     QVector<AlignmentGuide> guides;
+    QString semanticId;
 
     [[nodiscard]] bool snapped() const noexcept;
 };
@@ -159,6 +162,8 @@ struct CanonicalEditRequest final {
     QString commandId;
     QVector<QPointF> points;
     QVector<quint64> selectedItemIds;
+    QStringList semanticIds;
+    QJsonObject attributes;
 };
 
 enum class CommandStartResult : std::uint8_t {
@@ -172,7 +177,7 @@ class DrawingCommandSession final {
     DrawingCommandSession();
 
     [[nodiscard]] CommandStartResult begin(QStringView commandOrAlias);
-    [[nodiscard]] bool acceptPoint(const QPointF& point);
+    [[nodiscard]] bool acceptPoint(const QPointF& point, QString semanticId = {});
     void updatePointer(const QPointF& point);
     [[nodiscard]] std::optional<CanonicalEditRequest>
     complete(const QVector<quint64>& selectedItemIds);
@@ -191,6 +196,7 @@ class DrawingCommandSession final {
     QHash<QString, QString> aliases_;
     QString activeCommandId_;
     QVector<QPointF> points_;
+    QStringList pointSemanticIds_;
     std::optional<QPointF> pointerPoint_;
     quint64 nextSerial_{1};
     quint64 completedEditCount_{0};

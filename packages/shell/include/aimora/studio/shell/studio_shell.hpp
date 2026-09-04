@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 #pragma once
 
+#include "aimora/studio/catalog/catalog_library.hpp"
 #include "aimora/studio/commands/command_registry.hpp"
 #include "aimora/studio/commands/drawing_interaction.hpp"
-#include "aimora/studio/catalog/catalog_library.hpp"
 #include "aimora/studio/inspector/panel_state.hpp"
 #include "aimora/studio/inspector/schema_inspector_widget.hpp"
 #include "aimora/studio/renderer/scene_surface.hpp"
@@ -14,6 +14,9 @@
 #include <QKeySequence>
 #include <QList>
 #include <QMainWindow>
+#include <QMetaObject>
+#include <QPointer>
+#include <QSet>
 #include <QSettings>
 #include <QStringList>
 #include <QStringView>
@@ -45,8 +48,7 @@ enum class WorkspaceRestoreStatus : std::uint8_t {
 
 class DrawingWorkspace final : public QWidget {
   public:
-    using CanonicalEditHandler =
-        std::function<bool(const commands::CanonicalEditRequest& request)>;
+    using CanonicalEditHandler = std::function<bool(const commands::CanonicalEditRequest& request)>;
     using InspectionSelectionHandler =
         std::function<void(const QVector<canvas::SceneItemId>& selectedIds, bool quickEdit)>;
 
@@ -57,6 +59,7 @@ class DrawingWorkspace final : public QWidget {
     void setThemeTokens(const themes::ThemeTokens& tokens);
     [[nodiscard]] const themes::ThemeTokens& themeTokens() const noexcept;
     void setElectricalPortSnaps(QVector<commands::SnapCandidate> ports);
+    void setSemanticItemIds(QHash<quint64, QString> semanticItemIds);
     void setCanonicalEditHandler(CanonicalEditHandler handler);
     void setInspectionSelectionHandler(InspectionSelectionHandler handler);
     [[nodiscard]] bool executeCommandText(QStringView input);
@@ -70,6 +73,8 @@ class DrawingWorkspace final : public QWidget {
     [[nodiscard]] const commands::PrecisionViewport& precisionViewport() const noexcept;
     [[nodiscard]] QWidget* interactionSurface() const noexcept;
     [[nodiscard]] quint64 dispatchedCanonicalEditCount() const noexcept;
+    [[nodiscard]] bool
+    requestEquipmentPlacement(const QString& catalogId, bool assembly, const QPointF& scenePoint);
     [[nodiscard]] QSize sizeHint() const override;
 
   protected:
@@ -79,6 +84,7 @@ class DrawingWorkspace final : public QWidget {
     void updatePointer(const QPointF& pixelPoint);
     void applyViewport();
     void completeCommand();
+    [[nodiscard]] bool dispatchCanonicalEdit(commands::CanonicalEditRequest request);
 
     themes::ThemeTokens tokens_{themes::lightThemeTokens()};
     renderer::SceneSurface* sceneSurface_{nullptr};
@@ -90,6 +96,7 @@ class DrawingWorkspace final : public QWidget {
     commands::SelectionModel selection_;
     commands::DrawingCommandSession commandSession_;
     QVector<commands::SnapCandidate> electricalPortSnaps_;
+    QHash<quint64, QString> semanticItemIds_;
     CanonicalEditHandler canonicalEditHandler_;
     InspectionSelectionHandler inspectionSelectionHandler_;
     QPointF pointerPixel_;
@@ -105,12 +112,10 @@ class DrawingWorkspace final : public QWidget {
 
 class StudioDockWidget final : public QDockWidget {
   public:
-    StudioDockWidget(
-        QString panelId,
-        const QString& title,
-        QWidget* content,
-        QWidget* parent = nullptr
-    );
+    StudioDockWidget(QString panelId,
+                     const QString& title,
+                     QWidget* content,
+                     QWidget* parent = nullptr);
 
     [[nodiscard]] QString panelId() const;
     [[nodiscard]] bool isPinned() const noexcept;
@@ -167,6 +172,10 @@ class StudioMainWindow final : public QMainWindow {
     void saveWorkspace();
     void resetWorkspace();
     void bindInspectionService(protocol::ServiceClient* client);
+    void bindSemanticEditService(protocol::ServiceClient* client,
+                                 QString projectId,
+                                 QString baseRevision);
+    [[nodiscard]] QString semanticRevision() const;
     void setInspectionIdentityResolver(InspectionIdentityResolver resolver);
 
   protected:
@@ -183,26 +192,19 @@ class StudioMainWindow final : public QMainWindow {
     void showAboutDialog();
 
     [[nodiscard]] QMenu* menu(QStringView menuId) const;
-    [[nodiscard]] QAction*
-    registerAction(
-        QString id,
-        const QString& label,
-        const QString& category,
-        const QKeySequence& shortcut = {}
-    );
-    [[nodiscard]] StudioDockWidget*
-    addPanel(
-        QString panelId,
-        const QString& title,
-        Qt::DockWidgetArea defaultArea,
-        QWidget* content
-    );
-    [[nodiscard]] QWidget* createInformationPanel(
-        const QString& title,
-        const QString& description
-    ) const;
+    [[nodiscard]] QAction* registerAction(QString id,
+                                          const QString& label,
+                                          const QString& category,
+                                          const QKeySequence& shortcut = {});
+    [[nodiscard]] StudioDockWidget* addPanel(QString panelId,
+                                             const QString& title,
+                                             Qt::DockWidgetArea defaultArea,
+                                             QWidget* content);
+    [[nodiscard]] QWidget* createInformationPanel(const QString& title,
+                                                  const QString& description) const;
     [[nodiscard]] QWidget* createCommandPanel();
     void addUnavailableAction(QMenu& target, const QString& explanation);
+    [[nodiscard]] bool dispatchSemanticEdit(const commands::CanonicalEditRequest& request);
 
     themes::ThemeController& themeController_;
     WorkspaceSettings workspaceSettings_;
@@ -217,6 +219,11 @@ class StudioMainWindow final : public QMainWindow {
     QHash<QString, QAction*> actions_;
     QHash<QString, StudioDockWidget*> panels_;
     QHash<QString, Qt::DockWidgetArea> defaultDockAreas_;
+    QPointer<protocol::ServiceClient> semanticEditClient_;
+    QString semanticProjectId_;
+    QString semanticRevision_;
+    QSet<QString> pendingSemanticRequests_;
+    QMetaObject::Connection semanticResponseConnection_;
     WorkspaceRestoreStatus restoreStatus_{WorkspaceRestoreStatus::NoSavedState};
 };
 

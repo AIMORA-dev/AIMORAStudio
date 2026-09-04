@@ -5,7 +5,6 @@
 
 #include <QApplication>
 #include <QtTest>
-
 #include <cmath>
 
 namespace {
@@ -42,6 +41,8 @@ class InteractionTests final : public QObject {
     void selectionSupportsHitMarqueeGripsAndVirtualNodes();
     void commandSessionEmitsOneRequestOnlyWhenCompleted();
     void workspaceRoutesLocalInteractionAndOneCommitCallback();
+    void semanticConnectionsRequireStablePortIdentities();
+    void catalogPlacementDispatchesStableIdentityAndDisplayPoint();
 };
 
 void InteractionTests::coordinatesPreserveAbsoluteRelativeAndPolarIntent() {
@@ -127,16 +128,13 @@ void InteractionTests::selectionSupportsHitMarqueeGripsAndVirtualNodes() {
         {11, QRectF{0.0, 0.0, 5.0, 5.0}},
         {12, QRectF{8.0, 8.0, 5.0, 5.0}},
     };
-    selection.applyMarquee(records,
-                           QRectF{0.0, 0.0, 10.0, 10.0},
-                           false,
-                           SelectionOperation::Replace);
+    selection.applyMarquee(
+        records, QRectF{0.0, 0.0, 10.0, 10.0}, false, SelectionOperation::Replace);
     QCOMPARE(selection.selectedIds(), QVector<quint64>{11});
     const QVector<EditHandle> handles = selection.handles(records);
     QCOMPARE(handles.size(), qsizetype{8});
     QCOMPARE(static_cast<int>(handles.front().kind), static_cast<int>(EditHandleKind::Grip));
-    QCOMPARE(static_cast<int>(handles.back().kind),
-             static_cast<int>(EditHandleKind::VirtualNode));
+    QCOMPARE(static_cast<int>(handles.back().kind), static_cast<int>(EditHandleKind::VirtualNode));
 }
 
 void InteractionTests::commandSessionEmitsOneRequestOnlyWhenCompleted() {
@@ -191,6 +189,44 @@ void InteractionTests::workspaceRoutesLocalInteractionAndOneCommitCallback() {
     QVERIFY(workspace.executeCommandText(QStringView{u"polar"}));
     QVERIFY(workspace.polarEnabled());
     QVERIFY(!workspace.orthoEnabled());
+}
+
+void InteractionTests::semanticConnectionsRequireStablePortIdentities() {
+    using namespace aimora::studio::commands;
+    DrawingCommandSession session;
+    QCOMPARE(static_cast<int>(session.begin(QStringView{u"wire"})),
+             static_cast<int>(CommandStartResult::Started));
+    QVERIFY(session.acceptPoint({0.0, 0.0}, QStringLiteral("port.source")));
+    QVERIFY(session.acceptPoint({20.0, 0.0}));
+    QVERIFY(!session.complete({}).has_value());
+    session.cancel();
+
+    QCOMPARE(static_cast<int>(session.begin(QStringView{u"electrical.connect"})),
+             static_cast<int>(CommandStartResult::Started));
+    QVERIFY(session.acceptPoint({0.0, 0.0}, QStringLiteral("port.source")));
+    QVERIFY(session.acceptPoint({20.0, 0.0}, QStringLiteral("port.target")));
+    const auto request = session.complete({});
+    QVERIFY(request.has_value());
+    QCOMPARE(request->semanticIds,
+             (QStringList{QStringLiteral("port.source"), QStringLiteral("port.target")}));
+}
+
+void InteractionTests::catalogPlacementDispatchesStableIdentityAndDisplayPoint() {
+    using aimora::studio::shell::DrawingWorkspace;
+    DrawingWorkspace workspace;
+    std::optional<aimora::studio::commands::CanonicalEditRequest> received;
+    workspace.setCanonicalEditHandler([&received](const auto& request) {
+        received = request;
+        return true;
+    });
+    const QString catalogId = QStringLiteral("aimora://catalog/system/assembly.feeder_bay@1.0.0");
+    QVERIFY(workspace.requestEquipmentPlacement(catalogId, true, QPointF{25.0, 40.0}));
+    QVERIFY(received.has_value());
+    QCOMPARE(received->commandId, QStringLiteral("equipment.place"));
+    QCOMPARE(received->semanticIds, QStringList{catalogId});
+    QCOMPARE(received->points, QVector<QPointF>{QPointF{25.0, 40.0}});
+    QCOMPARE(received->attributes.value(QStringLiteral("catalog_id")).toString(), catalogId);
+    QVERIFY(received->attributes.value(QStringLiteral("assembly")).toBool());
 }
 
 QTEST_MAIN(InteractionTests)

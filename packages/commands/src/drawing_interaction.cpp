@@ -2,7 +2,6 @@
 #include "aimora/studio/commands/drawing_interaction.hpp"
 
 #include <QLocale>
-
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -20,9 +19,9 @@ constexpr qsizetype maximumCommandPoints = 100'000;
 }
 
 [[nodiscard]] bool finiteBounds(const QRectF& bounds) noexcept {
-    return std::isfinite(bounds.x()) && std::isfinite(bounds.y())
-        && std::isfinite(bounds.width()) && std::isfinite(bounds.height())
-        && bounds.width() >= 0.0 && bounds.height() >= 0.0;
+    return std::isfinite(bounds.x()) && std::isfinite(bounds.y()) &&
+           std::isfinite(bounds.width()) && std::isfinite(bounds.height()) &&
+           bounds.width() >= 0.0 && bounds.height() >= 0.0;
 }
 
 [[nodiscard]] std::optional<qreal> parseScalar(QStringView input) {
@@ -91,12 +90,10 @@ constexpr qsizetype maximumCommandPoints = 100'000;
             return *anchor;
         }
         const qreal angle = std::atan2(delta.y(), delta.x());
-        const qreal increment = settings.polarIncrementDegrees * std::numbers::pi_v<qreal>
-            / 180.0;
+        const qreal increment = settings.polarIncrementDegrees * std::numbers::pi_v<qreal> / 180.0;
         const qreal constrainedAngle = std::round(angle / increment) * increment;
-        return *anchor
-            + QPointF{length * std::cos(constrainedAngle),
-                      length * std::sin(constrainedAngle)};
+        return *anchor +
+               QPointF{length * std::cos(constrainedAngle), length * std::sin(constrainedAngle)};
     }
     return raw;
 }
@@ -106,6 +103,7 @@ struct SnapChoice final {
     SnapKind kind{SnapKind::None};
     quint64 itemId{0};
     qreal distancePixels{std::numeric_limits<qreal>::infinity()};
+    QString semanticId;
 };
 
 [[nodiscard]] bool betterChoice(const SnapChoice& candidate, const SnapChoice& current) {
@@ -156,8 +154,7 @@ std::optional<CoordinateInput> CoordinateInterpreter::parse(QStringView input,
             }
             const qreal radians = *degrees * std::numbers::pi_v<qreal> / 180.0;
             const QPointF point =
-                anchor + QPointF{*distance * std::cos(radians),
-                                 *distance * std::sin(radians)};
+                anchor + QPointF{*distance * std::cos(radians), *distance * std::sin(radians)};
             return CoordinateInput{point, CoordinateInputKind::Polar};
         }
         const auto delta = parseCartesian(relative);
@@ -174,18 +171,17 @@ std::optional<CoordinateInput> CoordinateInterpreter::parse(QStringView input,
 }
 
 bool PrecisionViewport::isValid(const QSizeF& pixelExtent) const noexcept {
-    return finitePoint(center) && std::isfinite(zoom) && std::isfinite(minimumZoom)
-        && std::isfinite(maximumZoom) && zoom >= minimumZoom && zoom <= maximumZoom
-        && minimumZoom > 0.0 && maximumZoom >= minimumZoom && pixelExtent.width() > 0.0
-        && pixelExtent.height() > 0.0 && std::isfinite(pixelExtent.width())
-        && std::isfinite(pixelExtent.height());
+    return finitePoint(center) && std::isfinite(zoom) && std::isfinite(minimumZoom) &&
+           std::isfinite(maximumZoom) && zoom >= minimumZoom && zoom <= maximumZoom &&
+           minimumZoom > 0.0 && maximumZoom >= minimumZoom && pixelExtent.width() > 0.0 &&
+           pixelExtent.height() > 0.0 && std::isfinite(pixelExtent.width()) &&
+           std::isfinite(pixelExtent.height());
 }
 
 QPointF PrecisionViewport::scenePoint(const QPointF& pixel,
                                       const QSizeF& pixelExtent) const noexcept {
-    return center
-        + QPointF{(pixel.x() - (pixelExtent.width() / 2.0)) / zoom,
-                  (pixel.y() - (pixelExtent.height() / 2.0)) / zoom};
+    return center + QPointF{(pixel.x() - (pixelExtent.width() / 2.0)) / zoom,
+                            (pixel.y() - (pixelExtent.height() / 2.0)) / zoom};
 }
 
 QPointF PrecisionViewport::pixelPoint(const QPointF& scene,
@@ -207,9 +203,8 @@ bool PrecisionViewport::zoomAt(const QPointF& pixel,
         return false;
     }
     zoom = nextZoom;
-    center = fixedScenePoint
-        - QPointF{(pixel.x() - (pixelExtent.width() / 2.0)) / zoom,
-                  (pixel.y() - (pixelExtent.height() / 2.0)) / zoom};
+    center = fixedScenePoint - QPointF{(pixel.x() - (pixelExtent.width() / 2.0)) / zoom,
+                                       (pixel.y() - (pixelExtent.height() / 2.0)) / zoom};
     return true;
 }
 
@@ -221,10 +216,10 @@ void PrecisionViewport::panBy(const QPointF& pixelDelta) noexcept {
 }
 
 bool SnapSettings::isValid() const noexcept {
-    return std::isfinite(gridSpacing) && gridSpacing > 0.0
-        && std::isfinite(tolerancePixels) && tolerancePixels >= 0.0
-        && std::isfinite(polarIncrementDegrees) && polarIncrementDegrees > 0.0
-        && polarIncrementDegrees <= 180.0 && !(orthoEnabled && polarEnabled);
+    return std::isfinite(gridSpacing) && gridSpacing > 0.0 && std::isfinite(tolerancePixels) &&
+           tolerancePixels >= 0.0 && std::isfinite(polarIncrementDegrees) &&
+           polarIncrementDegrees > 0.0 && polarIncrementDegrees <= 180.0 &&
+           !(orthoEnabled && polarEnabled);
 }
 
 bool SnapResult::snapped() const noexcept {
@@ -243,12 +238,16 @@ SnapResult SnapResolver::resolve(const QPointF& rawScenePoint,
     const QPointF constrained = constrainedPoint(rawScenePoint, anchor, settings);
     const QPointF targetPixel = viewport.pixelPoint(constrained, pixelExtent);
     SnapChoice best;
-    auto consider = [&](const QPointF& point, const SnapKind kind, const quint64 itemId) {
+    auto consider = [&](const QPointF& point,
+                        const SnapKind kind,
+                        const quint64 itemId,
+                        const QString& semanticId = QString{}) {
         if (!finitePoint(point)) {
             return;
         }
-        const qreal distance = QLineF{targetPixel, viewport.pixelPoint(point, pixelExtent)}.length();
-        const SnapChoice choice{point, kind, itemId, distance};
+        const qreal distance =
+            QLineF{targetPixel, viewport.pixelPoint(point, pixelExtent)}.length();
+        const SnapChoice choice{point, kind, itemId, distance, semanticId};
         if (distance <= settings.tolerancePixels && betterChoice(choice, best)) {
             best = choice;
         }
@@ -256,7 +255,7 @@ SnapResult SnapResolver::resolve(const QPointF& rawScenePoint,
 
     for (const SnapCandidate& candidate : candidates) {
         if (candidateEnabled(candidate, settings)) {
-            consider(candidate.point, candidate.kind, candidate.itemId);
+            consider(candidate.point, candidate.kind, candidate.itemId, candidate.semanticId);
         }
     }
 
@@ -307,15 +306,14 @@ SnapResult SnapResolver::resolve(const QPointF& rawScenePoint,
     if (best.kind == SnapKind::None) {
         return {constrained, SnapKind::None, 0, {}};
     }
-    return {best.point, best.kind, best.itemId, std::move(guides)};
+    return {best.point, best.kind, best.itemId, std::move(guides), best.semanticId};
 }
 
 void SelectionModel::clear() noexcept {
     selectedIds_.clear();
 }
 
-void SelectionModel::applyHit(const QVector<quint64>& hitIds,
-                              const SelectionOperation operation) {
+void SelectionModel::applyHit(const QVector<quint64>& hitIds, const SelectionOperation operation) {
     QVector<quint64> deterministicIds = hitIds;
     std::sort(deterministicIds.begin(), deterministicIds.end());
     deterministicIds.erase(std::unique(deterministicIds.begin(), deterministicIds.end()),
@@ -393,8 +391,7 @@ qsizetype SelectionModel::size() const noexcept {
     return selectedIds_.size();
 }
 
-void SelectionModel::applyIds(const QVector<quint64>& itemIds,
-                              const SelectionOperation operation) {
+void SelectionModel::applyIds(const QVector<quint64>& itemIds, const SelectionOperation operation) {
     if (operation == SelectionOperation::Replace) {
         selectedIds_.clear();
     }
@@ -427,7 +424,13 @@ DrawingCommandSession::DrawingCommandSession()
                {QStringLiteral("pl"), QStringLiteral("draw.polyline")},
                {QStringLiteral("polyline"), QStringLiteral("draw.polyline")},
                {QStringLiteral("m"), QStringLiteral("modify.move")},
-               {QStringLiteral("move"), QStringLiteral("modify.move")}} {}
+               {QStringLiteral("move"), QStringLiteral("modify.move")},
+               {QStringLiteral("wire"), QStringLiteral("electrical.connect")},
+               {QStringLiteral("connect"), QStringLiteral("electrical.connect")},
+               {QStringLiteral("place"), QStringLiteral("equipment.place")},
+               {QStringLiteral("junction"), QStringLiteral("junction.update")},
+               {QStringLiteral("removeprojection"), QStringLiteral("projection.remove")},
+               {QStringLiteral("deleteasset"), QStringLiteral("asset.delete")}} {}
 
 CommandStartResult DrawingCommandSession::begin(QStringView commandOrAlias) {
     if (isActive()) {
@@ -439,15 +442,17 @@ CommandStartResult DrawingCommandSession::begin(QStringView commandOrAlias) {
     }
     activeCommandId_ = resolved;
     points_.clear();
+    pointSemanticIds_.clear();
     pointerPoint_.reset();
     return CommandStartResult::Started;
 }
 
-bool DrawingCommandSession::acceptPoint(const QPointF& point) {
+bool DrawingCommandSession::acceptPoint(const QPointF& point, QString semanticId) {
     if (!isActive() || !finitePoint(point) || points_.size() >= maximumCommandPoints) {
         return false;
     }
     points_.append(point);
+    pointSemanticIds_.append(std::move(semanticId));
     pointerPoint_ = point;
     return true;
 }
@@ -460,15 +465,27 @@ void DrawingCommandSession::updatePointer(const QPointF& point) {
 
 std::optional<CanonicalEditRequest>
 DrawingCommandSession::complete(const QVector<quint64>& selectedItemIds) {
-    if (!isActive()
-        || points_.size() < minimumPointCount(QStringView{activeCommandId_})) {
+    if (!isActive() || points_.size() < minimumPointCount(QStringView{activeCommandId_})) {
         return std::nullopt;
+    }
+    if (activeCommandId_ == QStringLiteral("electrical.connect") &&
+        (pointSemanticIds_.size() != points_.size() || pointSemanticIds_.front().isEmpty() ||
+         pointSemanticIds_.back().isEmpty() ||
+         pointSemanticIds_.front() == pointSemanticIds_.back())) {
+        return std::nullopt;
+    }
+    QStringList semanticIds;
+    for (const QString& semanticId : pointSemanticIds_) {
+        if (!semanticId.isEmpty() && !semanticIds.contains(semanticId)) {
+            semanticIds.append(semanticId);
+        }
     }
     CanonicalEditRequest request{
         .serial = nextSerial_,
         .commandId = activeCommandId_,
         .points = points_,
         .selectedItemIds = selectedItemIds,
+        .semanticIds = semanticIds,
     };
     ++nextSerial_;
     ++completedEditCount_;
@@ -479,6 +496,7 @@ DrawingCommandSession::complete(const QVector<quint64>& selectedItemIds) {
 void DrawingCommandSession::cancel() noexcept {
     activeCommandId_.clear();
     points_.clear();
+    pointSemanticIds_.clear();
     pointerPoint_.reset();
 }
 
@@ -518,9 +536,20 @@ quint64 DrawingCommandSession::completedEditCount() const noexcept {
 }
 
 qsizetype DrawingCommandSession::minimumPointCount(QStringView commandId) noexcept {
-    if (commandId == QStringView{u"draw.line"} || commandId == QStringView{u"draw.polyline"}
-        || commandId == QStringView{u"modify.move"}) {
+    if (commandId == QStringView{u"draw.line"} || commandId == QStringView{u"draw.polyline"} ||
+        commandId == QStringView{u"modify.move"} ||
+        commandId == QStringView{u"electrical.connect"} ||
+        commandId == QStringView{u"route.edit"} || commandId == QStringView{u"projection.edit"}) {
         return 2;
+    }
+    if (commandId == QStringView{u"equipment.place"} ||
+        commandId == QStringView{u"junction.update"} ||
+        commandId == QStringView{u"cross_reference.update"}) {
+        return 1;
+    }
+    if (commandId == QStringView{u"projection.remove"} ||
+        commandId == QStringView{u"asset.delete"}) {
+        return 0;
     }
     return std::numeric_limits<qsizetype>::max();
 }

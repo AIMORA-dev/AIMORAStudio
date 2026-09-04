@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
-#include "aimora/studio/shell/studio_shell.hpp"
-
 #include "aimora/studio/core/application_info.hpp"
+#include "aimora/studio/protocol/generated/service_protocol.hpp"
+#include "aimora/studio/protocol/service_client.hpp"
+#include "aimora/studio/shell/studio_shell.hpp"
 
 #include <QAction>
 #include <QActionGroup>
 #include <QCloseEvent>
 #include <QFont>
+#include <QJsonArray>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
@@ -14,7 +16,6 @@
 #include <QMessageBox>
 #include <QSignalBlocker>
 #include <QVBoxLayout>
-
 #include <algorithm>
 #include <utility>
 
@@ -33,58 +34,57 @@ constexpr int minimumWindowHeight = 600;
 
 } // namespace
 
-
-StudioMainWindow::StudioMainWindow(
-    themes::ThemeController& themeController,
-    QSettings& settings,
-    QWidget* parent
-)
-    : QMainWindow{parent},
-      themeController_{themeController},
-      workspaceSettings_{settings} {
+StudioMainWindow::StudioMainWindow(themes::ThemeController& themeController,
+                                   QSettings& settings,
+                                   QWidget* parent)
+    : QMainWindow{parent}, themeController_{themeController}, workspaceSettings_{settings} {
     configureWindow();
     createMenus();
     createPanels();
+    connect(catalogLibrary_,
+            &catalog::CatalogLibraryWidget::placementRequested,
+            this,
+            [this](const QString& catalogId, const bool assembly) {
+                static_cast<void>(drawingWorkspace_->requestEquipmentPlacement(
+                    catalogId, assembly, drawingWorkspace_->precisionViewport().center));
+            });
     drawingWorkspace_->setInspectionSelectionHandler(
         [this](const QVector<canvas::SceneItemId>& selectedIds, bool quickEdit) {
-            if(selectedIds.isEmpty()) {
+            if (selectedIds.isEmpty()) {
                 schemaInspector_->clearInspection();
                 return;
             }
-            if(!inspectionIdentityResolver_) {
+            if (!inspectionIdentityResolver_) {
                 return;
             }
             const auto identity = inspectionIdentityResolver_(selectedIds);
-            if(!identity.has_value()) {
+            if (!identity.has_value()) {
                 schemaInspector_->clearInspection();
                 return;
             }
             schemaInspector_->inspect(*identity);
-            if(StudioDockWidget* inspectorDock = panel(QStringView{u"panel.inspector"});
-               inspectorDock != nullptr) {
+            if (StudioDockWidget* inspectorDock = panel(QStringView{u"panel.inspector"});
+                inspectorDock != nullptr) {
                 inspectorDock->show();
                 inspectorDock->raise();
-                if(quickEdit) {
+                if (quickEdit) {
                     schemaInspector_->setFocus(Qt::ShortcutFocusReason);
                 }
             }
-        }
-    );
+        });
 
-    connect(
-        &themeController_,
-        &themes::ThemeController::themeChanged,
-        this,
-        [this](themes::ThemeMode, themes::ThemeMode) {
-            updateTheme();
-            updateThemeActions();
-        }
-    );
+    connect(&themeController_,
+            &themes::ThemeController::themeChanged,
+            this,
+            [this](themes::ThemeMode, themes::ThemeMode) {
+                updateTheme();
+                updateThemeActions();
+            });
     updateTheme();
     updateThemeActions();
 
     restoreStatus_ = workspaceSettings_.restore(*this);
-    if(restoreStatus_ == WorkspaceRestoreStatus::Restored) {
+    if (restoreStatus_ == WorkspaceRestoreStatus::Restored) {
         restorePanelPins();
     } else {
         applyDefaultWorkspace();
@@ -107,6 +107,107 @@ void StudioMainWindow::bindInspectionService(protocol::ServiceClient* client) {
     schemaInspector_->bindServiceClient(client);
 }
 
+void StudioMainWindow::bindSemanticEditService(protocol::ServiceClient* client,
+                                               QString projectId,
+                                               QString baseRevision) {
+    if (semanticEditClient_ != nullptr) {
+        disconnect(semanticResponseConnection_);
+    }
+    semanticEditClient_ = client;
+    semanticProjectId_ = std::move(projectId);
+    semanticRevision_ = std::move(baseRevision);
+    pendingSemanticRequests_.clear();
+    drawingWorkspace_->setCanonicalEditHandler(
+        [this](const commands::CanonicalEditRequest& request) {
+            return dispatchSemanticEdit(request);
+        });
+    if (client == nullptr) {
+        return;
+    }
+    semanticResponseConnection_ = connect(
+        client,
+        &protocol::ServiceClient::responseReceived,
+        this,
+        [this](const QString& requestId,
+               const bool ok,
+               const QJsonObject& result,
+               const QString&,
+               const QString&) {
+            if (!pendingSemanticRequests_.remove(requestId)) {
+                return;
+            }
+            if (ok &&
+                result.value(QStringLiteral("status")).toString() == QStringLiteral("accepted")) {
+                const QString revision = result.value(QStringLiteral("revision")).toString();
+                if (!revision.isEmpty()) {
+                    semanticRevision_ = revision;
+                }
+            }
+        });
+}
+
+QString StudioMainWindow::semanticRevision() const {
+    return semanticRevision_;
+}
+
+bool StudioMainWindow::dispatchSemanticEdit(const commands::CanonicalEditRequest& request) {
+    if (semanticEditClient_ == nullptr || !semanticEditClient_->isReady() ||
+        !semanticEditClient_->capabilities().contains(QStringLiteral("semantic.transaction")) ||
+        semanticProjectId_.trimmed().isEmpty() || semanticRevision_.trimmed().isEmpty() ||
+        request.semanticIds.isEmpty()) {
+        return false;
+    }
+    QString operation = request.commandId;
+    if (operation == QStringLiteral("electrical.connect")) {
+        operation = QStringLiteral("conductor.connect");
+    }
+    static const QSet<QString> supportedOperations{
+        QStringLiteral("equipment.place"),
+        QStringLiteral("conductor.connect"),
+        QStringLiteral("junction.update"),
+        QStringLiteral("projection.edit"),
+        QStringLiteral("route.edit"),
+        QStringLiteral("projection.remove"),
+        QStringLiteral("asset.delete"),
+        QStringLiteral("cross_reference.update"),
+    };
+    if (!supportedOperations.contains(operation)) {
+        return false;
+    }
+    QJsonArray semanticIds;
+    for (const QString& semanticId : request.semanticIds) {
+        semanticIds.append(semanticId);
+    }
+    QJsonArray points;
+    for (const QPointF& point : request.points) {
+        points.append(QJsonArray{point.x(), point.y()});
+    }
+    QJsonObject attributes = request.attributes;
+    QJsonArray presentationItemIds;
+    for (const quint64 itemId : request.selectedItemIds) {
+        presentationItemIds.append(QString::number(itemId));
+    }
+    if (!presentationItemIds.isEmpty()) {
+        attributes.insert(QStringLiteral("presentation_item_ids"), presentationItemIds);
+    }
+    const QJsonObject parameters{
+        {QStringLiteral("project_id"), semanticProjectId_},
+        {QStringLiteral("base_revision"), semanticRevision_},
+        {QStringLiteral("transaction_id"), QStringLiteral("studio-%1").arg(request.serial)},
+        {QStringLiteral("operation"), operation},
+        {QStringLiteral("semantic_ids"), semanticIds},
+        {QStringLiteral("points"), points},
+        {QStringLiteral("attributes"), attributes},
+    };
+    const QString requestId =
+        semanticEditClient_->sendRequest(protocol::generated::Method::SemanticCommit, parameters);
+    if (requestId.isEmpty()) {
+        return false;
+    }
+    pendingSemanticRequests_.insert(requestId);
+    return true;
+}
+
 void StudioMainWindow::setInspectionIdentityResolver(InspectionIdentityResolver resolver) {
     inspectionIdentityResolver_ = std::move(resolver);
 }
@@ -121,13 +222,11 @@ StudioDockWidget* StudioMainWindow::panel(QStringView panelId) const {
 
 QList<StudioDockWidget*> StudioMainWindow::panels() const {
     QList<StudioDockWidget*> result = panels_.values();
-    std::sort(
-        result.begin(),
-        result.end(),
-        [](const StudioDockWidget* first, const StudioDockWidget* second) {
-            return first->panelId() < second->panelId();
-        }
-    );
+    std::sort(result.begin(),
+              result.end(),
+              [](const StudioDockWidget* first, const StudioDockWidget* second) {
+                  return first->panelId() < second->panelId();
+              });
     return result;
 }
 
@@ -135,7 +234,7 @@ QStringList StudioMainWindow::menuTitles() const {
     QStringList titles;
     const QList<QAction*> menuActions = menuBar()->actions();
     titles.reserve(menuActions.size());
-    for(const QAction* menuAction : menuActions) {
+    for (const QAction* menuAction : menuActions) {
         titles.push_back(normalizedMenuTitle(menuAction->text()));
     }
     return titles;
@@ -146,14 +245,13 @@ WorkspaceRestoreStatus StudioMainWindow::restoreStatus() const noexcept {
 }
 
 bool StudioMainWindow::shouldStartMaximized() const {
-    return restoreStatus_ == WorkspaceRestoreStatus::Restored
-        ? workspaceSettings_.wasMaximized()
-        : true;
+    return restoreStatus_ == WorkspaceRestoreStatus::Restored ? workspaceSettings_.wasMaximized()
+                                                              : true;
 }
 
 void StudioMainWindow::saveWorkspace() {
     workspaceSettings_.save(*this);
-    for(const StudioDockWidget* dock : panels()) {
+    for (const StudioDockWidget* dock : panels()) {
         workspaceSettings_.savePanelPinned(dock->panelId(), dock->isPinned());
     }
 }
@@ -171,18 +269,12 @@ void StudioMainWindow::closeEvent(QCloseEvent* event) {
 
 void StudioMainWindow::configureWindow() {
     setObjectName(QStringLiteral("aimora.main-window"));
-    setWindowTitle(
-        tr("%1 — Drawing Workspace").arg(core::ApplicationInfo::productName())
-    );
+    setWindowTitle(tr("%1 — Drawing Workspace").arg(core::ApplicationInfo::productName()));
     setMinimumSize(minimumWindowWidth, minimumWindowHeight);
     resize(defaultWindowWidth, defaultWindowHeight);
     setDockNestingEnabled(true);
-    setDockOptions(
-        QMainWindow::AllowNestedDocks
-        | QMainWindow::AllowTabbedDocks
-        | QMainWindow::AnimatedDocks
-        | QMainWindow::GroupedDragging
-    );
+    setDockOptions(QMainWindow::AllowNestedDocks | QMainWindow::AllowTabbedDocks |
+                   QMainWindow::AnimatedDocks | QMainWindow::GroupedDragging);
     setCorner(Qt::TopLeftCorner, Qt::LeftDockWidgetArea);
     setCorner(Qt::BottomLeftCorner, Qt::LeftDockWidgetArea);
     setCorner(Qt::TopRightCorner, Qt::RightDockWidgetArea);
@@ -195,7 +287,7 @@ void StudioMainWindow::configureWindow() {
 }
 
 void StudioMainWindow::applyDefaultWorkspace() {
-    for(StudioDockWidget* dock : panels()) {
+    for (StudioDockWidget* dock : panels()) {
         dock->setPinned(false);
         dock->setFloating(false);
         addDockWidget(defaultDockAreas_.value(dock->panelId()), dock);
@@ -205,7 +297,7 @@ void StudioMainWindow::applyDefaultWorkspace() {
 }
 
 void StudioMainWindow::restorePanelPins() {
-    for(StudioDockWidget* dock : panels()) {
+    for (StudioDockWidget* dock : panels()) {
         dock->setPinned(workspaceSettings_.panelPinned(dock->panelId()));
     }
 }
@@ -217,7 +309,7 @@ void StudioMainWindow::updateTheme() {
 
 void StudioMainWindow::updateThemeActions() {
     const QString requested = themes::toString(themeController_.requestedMode());
-    for(QAction* action : themeActionGroup_->actions()) {
+    for (QAction* action : themeActionGroup_->actions()) {
         const QSignalBlocker blocker{action};
         action->setChecked(action->data().toString() == requested);
     }
@@ -228,18 +320,12 @@ void StudioMainWindow::showAboutDialog() {
     dialog.setWindowTitle(tr("About AIMORAStudio"));
     dialog.setIcon(QMessageBox::Information);
     dialog.setText(
-        tr("<b>%1 %2</b>").arg(
-            core::ApplicationInfo::productName(),
-            core::ApplicationInfo::version()
-        )
-    );
+        tr("<b>%1 %2</b>")
+            .arg(core::ApplicationInfo::productName(), core::ApplicationInfo::version()));
     dialog.setInformativeText(
-        tr(
-            "Native C++20 and Qt 6 desktop shell with an out-of-process Julia "
-            "engineering service. GUI030 provides the clean shell and themes; "
-            "engineering behavior remains in later dependency-ordered packets."
-        )
-    );
+        tr("Native C++20 and Qt 6 desktop shell with an out-of-process Julia "
+           "engineering service. GUI030 provides the clean shell and themes; "
+           "engineering behavior remains in later dependency-ordered packets."));
     dialog.setStandardButtons(QMessageBox::Close);
     dialog.exec();
 }
@@ -248,21 +334,18 @@ QMenu* StudioMainWindow::menu(QStringView menuId) const {
     return menus_.value(menuId.toString(), nullptr);
 }
 
-QAction* StudioMainWindow::registerAction(
-    QString id,
-    const QString& label,
-    const QString& category,
-    const QKeySequence& shortcut
-) {
+QAction* StudioMainWindow::registerAction(QString id,
+                                          const QString& label,
+                                          const QString& category,
+                                          const QKeySequence& shortcut) {
     const commands::CommandDefinition definition{
         .id = id,
         .label = label,
         .category = category,
         .defaultShortcut = shortcut,
     };
-    const commands::RegistrationResult result =
-        commandRegistry_.registerCommand(definition);
-    if(result != commands::RegistrationResult::Added) {
+    const commands::RegistrationResult result = commandRegistry_.registerCommand(definition);
+    if (result != commands::RegistrationResult::Added) {
         qFatal("Invalid or duplicate AIMORAStudio command registration.");
     }
 
@@ -276,12 +359,10 @@ QAction* StudioMainWindow::registerAction(
     return action;
 }
 
-StudioDockWidget* StudioMainWindow::addPanel(
-    QString panelId,
-    const QString& title,
-    Qt::DockWidgetArea defaultArea,
-    QWidget* content
-) {
+StudioDockWidget* StudioMainWindow::addPanel(QString panelId,
+                                             const QString& title,
+                                             Qt::DockWidgetArea defaultArea,
+                                             QWidget* content) {
     StudioDockWidget* dock = new StudioDockWidget{panelId, title, content, this};
     defaultDockAreas_.insert(panelId, defaultArea);
     panels_.insert(std::move(panelId), dock);
@@ -290,10 +371,8 @@ StudioDockWidget* StudioMainWindow::addPanel(
     return dock;
 }
 
-QWidget* StudioMainWindow::createInformationPanel(
-    const QString& title,
-    const QString& description
-) const {
+QWidget* StudioMainWindow::createInformationPanel(const QString& title,
+                                                  const QString& description) const {
     QWidget* panelContent = new QWidget;
     panelContent->setProperty("aimoraPanel", true);
     panelContent->setAccessibleName(title);
@@ -327,12 +406,10 @@ QWidget* StudioMainWindow::createCommandPanel() {
     commandLine_ = new QLineEdit{panelContent};
     commandLine_->setObjectName(QStringLiteral("aimora.command-line"));
     commandLine_->setPlaceholderText(
-        tr("Command or coordinates: LINE, PL, MOVE, GRID, ORTHO, POLAR")
-    );
+        tr("Command or coordinates: LINE, PL, MOVE, GRID, ORTHO, POLAR"));
     commandLine_->setAccessibleDescription(
         tr("Enter a command alias, absolute coordinates, relative @x,y coordinates, "
-           "or polar @distance<angle coordinates.")
-    );
+           "or polar @distance<angle coordinates."));
     connect(commandLine_, &QLineEdit::returnPressed, this, [this]() {
         if (drawingWorkspace_->executeCommandText(commandLine_->text())) {
             commandLine_->clear();

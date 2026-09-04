@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 #include "aimora/studio/shell/studio_shell.hpp"
 
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QEvent>
+#include <QJsonDocument>
 #include <QKeyEvent>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPolygonF>
 #include <QStackedLayout>
 #include <QWheelEvent>
-
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -37,6 +40,7 @@ class DrawingInteractionSurface final : public QWidget {
         setAttribute(Qt::WA_TranslucentBackground);
         setFocusPolicy(Qt::StrongFocus);
         setMouseTracking(true);
+        setAcceptDrops(true);
     }
 
   protected:
@@ -51,8 +55,8 @@ class DrawingInteractionSurface final : public QWidget {
     PaintHandler paintHandler_;
 };
 
-[[nodiscard]] commands::SelectionOperation selectionOperation(
-    const Qt::KeyboardModifiers modifiers) noexcept {
+[[nodiscard]] commands::SelectionOperation
+selectionOperation(const Qt::KeyboardModifiers modifiers) noexcept {
     if (modifiers.testFlag(Qt::AltModifier)) {
         return commands::SelectionOperation::Subtract;
     }
@@ -65,13 +69,13 @@ class DrawingInteractionSurface final : public QWidget {
     return commands::SelectionOperation::Replace;
 }
 
-[[nodiscard]] QVector<commands::SelectionRecord> selectionRecords(
-    const QVector<canvas::SpatialRecord>& spatialRecords) {
+[[nodiscard]] QVector<commands::SelectionRecord>
+selectionRecords(const QVector<canvas::SpatialRecord>& spatialRecords) {
     QVector<commands::SelectionRecord> records;
     records.reserve(spatialRecords.size());
     for (const canvas::SpatialRecord& record : spatialRecords) {
-        if (record.kind == canvas::SceneItemKind::Page
-            || record.kind == canvas::SceneItemKind::Overlay) {
+        if (record.kind == canvas::SceneItemKind::Page ||
+            record.kind == canvas::SceneItemKind::Overlay) {
             continue;
         }
         records.append({record.id, record.bounds});
@@ -108,35 +112,34 @@ void appendIntersections(QVector<commands::SnapCandidate>& candidates,
                          const QVector<canvas::SpatialRecord>& records) {
     const canvas::SegmentBuffer& segments = scene.segments();
     for (qsizetype first = 0; first < records.size(); ++first) {
-        if (records[first].kind != canvas::SceneItemKind::Segment
-            || records[first].index < 0 || records[first].index >= segments.size()) {
+        if (records[first].kind != canvas::SceneItemKind::Segment || records[first].index < 0 ||
+            records[first].index >= segments.size()) {
             continue;
         }
         const QLineF firstLine{segments.starts[records[first].index],
                                segments.ends[records[first].index]};
         for (qsizetype second = first + 1; second < records.size(); ++second) {
-            if (records[second].kind != canvas::SceneItemKind::Segment
-                || records[second].index < 0 || records[second].index >= segments.size()) {
+            if (records[second].kind != canvas::SceneItemKind::Segment ||
+                records[second].index < 0 || records[second].index >= segments.size()) {
                 continue;
             }
             const QLineF secondLine{segments.starts[records[second].index],
                                     segments.ends[records[second].index]};
             QPointF intersection;
             if (firstLine.intersects(secondLine, &intersection) == QLineF::BoundedIntersection) {
-                candidates.append(
-                    {std::min(records[first].id, records[second].id),
-                     intersection,
-                     commands::SnapKind::Intersection});
+                candidates.append({std::min(records[first].id, records[second].id),
+                                   intersection,
+                                   commands::SnapKind::Intersection});
             }
         }
     }
 }
 
-[[nodiscard]] QVector<commands::SnapCandidate> nearbySnapCandidates(
-    const std::shared_ptr<const canvas::RetainedScene>& scene,
-    const QPointF& scenePoint,
-    const qreal toleranceScene,
-    const QVector<commands::SnapCandidate>& electricalPorts) {
+[[nodiscard]] QVector<commands::SnapCandidate>
+nearbySnapCandidates(const std::shared_ptr<const canvas::RetainedScene>& scene,
+                     const QPointF& scenePoint,
+                     const qreal toleranceScene,
+                     const QVector<commands::SnapCandidate>& electricalPorts) {
     QVector<commands::SnapCandidate> candidates;
     if (scene == nullptr || toleranceScene < 0.0 || !std::isfinite(toleranceScene)) {
         return candidates;
@@ -147,13 +150,13 @@ void appendIntersections(QVector<commands::SnapCandidate>& candidates,
     if (records.size() > maximumNearbyRecords) {
         records.resize(maximumNearbyRecords);
     }
-    candidates.reserve(records.size() * 5
-                       + std::min(electricalPorts.size(), maximumPortCandidates));
+    candidates.reserve(records.size() * 5 +
+                       std::min(electricalPorts.size(), maximumPortCandidates));
     for (const canvas::SpatialRecord& record : records) {
         if (record.kind == canvas::SceneItemKind::Segment) {
             appendSegmentCandidates(candidates, *scene, record);
-        } else if (record.kind == canvas::SceneItemKind::Symbol
-                   || record.kind == canvas::SceneItemKind::Text) {
+        } else if (record.kind == canvas::SceneItemKind::Symbol ||
+                   record.kind == canvas::SceneItemKind::Text) {
             appendBoundsCandidates(candidates, record);
         }
     }
@@ -165,16 +168,16 @@ void appendIntersections(QVector<commands::SnapCandidate>& candidates,
     return candidates;
 }
 
-[[nodiscard]] QVector<commands::SelectionRecord> visibleSelectionRecords(
-    const std::shared_ptr<const canvas::RetainedScene>& scene,
-    const commands::PrecisionViewport& viewport,
-    const QSizeF& pixelExtent) {
+[[nodiscard]] QVector<commands::SelectionRecord>
+visibleSelectionRecords(const std::shared_ptr<const canvas::RetainedScene>& scene,
+                        const commands::PrecisionViewport& viewport,
+                        const QSizeF& pixelExtent) {
     if (scene == nullptr || !viewport.isValid(pixelExtent)) {
         return {};
     }
     const QPointF topLeft = viewport.scenePoint(QPointF{0.0, 0.0}, pixelExtent);
-    const QPointF bottomRight = viewport.scenePoint(
-        QPointF{pixelExtent.width(), pixelExtent.height()}, pixelExtent);
+    const QPointF bottomRight =
+        viewport.scenePoint(QPointF{pixelExtent.width(), pixelExtent.height()}, pixelExtent);
     return selectionRecords(scene->spatialIndex().query(QRectF{topLeft, bottomRight}.normalized()));
 }
 
@@ -199,10 +202,10 @@ DrawingWorkspace::DrawingWorkspace(QWidget* parent) : QWidget{parent} {
 
     auto paintInteraction = [this](QPainter& painter, const QSizeF& pixelExtent) {
         if (marqueeActive_) {
-            const QPointF first = precisionViewport_.pixelPoint(marqueeSceneArea_.topLeft(),
-                                                                pixelExtent);
-            const QPointF second = precisionViewport_.pixelPoint(
-                marqueeSceneArea_.bottomRight(), pixelExtent);
+            const QPointF first =
+                precisionViewport_.pixelPoint(marqueeSceneArea_.topLeft(), pixelExtent);
+            const QPointF second =
+                precisionViewport_.pixelPoint(marqueeSceneArea_.bottomRight(), pixelExtent);
             QColor fill = tokens_.selection;
             fill.setAlpha(38);
             painter.setPen(QPen{tokens_.selection, 1.0, Qt::DashLine});
@@ -216,14 +219,12 @@ DrawingWorkspace::DrawingWorkspace(QWidget* parent) : QWidget{parent} {
         painter.setPen(guidePen);
         for (const commands::AlignmentGuide& guide : pointerSnap_.guides) {
             if (guide.orientation == Qt::Vertical) {
-                const qreal x = precisionViewport_
-                                    .pixelPoint(QPointF{guide.coordinate, 0.0}, pixelExtent)
-                                    .x();
+                const qreal x =
+                    precisionViewport_.pixelPoint(QPointF{guide.coordinate, 0.0}, pixelExtent).x();
                 painter.drawLine(QPointF{x, 0.0}, QPointF{x, pixelExtent.height()});
             } else {
-                const qreal y = precisionViewport_
-                                    .pixelPoint(QPointF{0.0, guide.coordinate}, pixelExtent)
-                                    .y();
+                const qreal y =
+                    precisionViewport_.pixelPoint(QPointF{0.0, guide.coordinate}, pixelExtent).y();
                 painter.drawLine(QPointF{0.0, y}, QPointF{pixelExtent.width(), y});
             }
         }
@@ -237,20 +238,17 @@ DrawingWorkspace::DrawingWorkspace(QWidget* parent) : QWidget{parent} {
                                     precisionViewport_.pixelPoint(segment.p2(), pixelExtent)});
         }
 
-        const auto records = visibleSelectionRecords(sceneSurface_->scene(),
-                                                     precisionViewport_,
-                                                     pixelExtent);
+        const auto records =
+            visibleSelectionRecords(sceneSurface_->scene(), precisionViewport_, pixelExtent);
         const auto handles = selection_.handles(records);
         for (const commands::EditHandle& handle : handles) {
             const QPointF pixel = precisionViewport_.pixelPoint(handle.point, pixelExtent);
             painter.setPen(QPen{tokens_.selection, 1.0});
-            painter.setBrush(handle.kind == commands::EditHandleKind::Grip
-                                 ? tokens_.canvas
-                                 : tokens_.selection);
+            painter.setBrush(handle.kind == commands::EditHandleKind::Grip ? tokens_.canvas
+                                                                           : tokens_.selection);
             if (handle.kind == commands::EditHandleKind::Grip) {
                 painter.drawRect(QRectF{pixel - QPointF{gripRadiusPixels, gripRadiusPixels},
-                                         QSizeF{gripRadiusPixels * 2.0,
-                                                gripRadiusPixels * 2.0}});
+                                        QSizeF{gripRadiusPixels * 2.0, gripRadiusPixels * 2.0}});
             } else {
                 const QPolygonF diamond{{pixel.x(), pixel.y() - gripRadiusPixels},
                                         {pixel.x() + gripRadiusPixels, pixel.y()},
@@ -261,8 +259,8 @@ DrawingWorkspace::DrawingWorkspace(QWidget* parent) : QWidget{parent} {
         }
 
         if (pointerAvailable_) {
-            const QPointF pointer = precisionViewport_.pixelPoint(pointerSnap_.scenePoint,
-                                                                  pixelExtent);
+            const QPointF pointer =
+                precisionViewport_.pixelPoint(pointerSnap_.scenePoint, pixelExtent);
             QPen crosshairPen{tokens_.textPrimary, 1.0};
             crosshairPen.setCosmetic(true);
             painter.setPen(crosshairPen);
@@ -288,7 +286,7 @@ DrawingWorkspace::DrawingWorkspace(QWidget* parent) : QWidget{parent} {
 void DrawingWorkspace::setScene(std::shared_ptr<const canvas::RetainedScene> scene) {
     sceneSurface_->setScene(std::move(scene));
     selection_.clear();
-    if(inspectionSelectionHandler_) {
+    if (inspectionSelectionHandler_) {
         inspectionSelectionHandler_({}, false);
     }
     interactionSurface_->update();
@@ -326,15 +324,27 @@ void DrawingWorkspace::setElectricalPortSnaps(QVector<commands::SnapCandidate> p
     ports.erase(std::remove_if(ports.begin(),
                                ports.end(),
                                [](const commands::SnapCandidate& candidate) {
-                                   return candidate.kind != commands::SnapKind::ElectricalPort
-                                       || !std::isfinite(candidate.point.x())
-                                       || !std::isfinite(candidate.point.y());
+                                   return candidate.kind != commands::SnapKind::ElectricalPort ||
+                                          candidate.semanticId.trimmed().isEmpty() ||
+                                          !std::isfinite(candidate.point.x()) ||
+                                          !std::isfinite(candidate.point.y());
                                }),
                 ports.end());
     if (ports.size() > maximumPortCandidates) {
         ports.resize(maximumPortCandidates);
     }
     electricalPortSnaps_ = std::move(ports);
+}
+
+void DrawingWorkspace::setSemanticItemIds(QHash<quint64, QString> semanticItemIds) {
+    for (auto iterator = semanticItemIds.begin(); iterator != semanticItemIds.end();) {
+        if (iterator.key() == 0 || iterator.value().trimmed().isEmpty()) {
+            iterator = semanticItemIds.erase(iterator);
+        } else {
+            ++iterator;
+        }
+    }
+    semanticItemIds_ = std::move(semanticItemIds);
 }
 
 void DrawingWorkspace::setCanonicalEditHandler(CanonicalEditHandler handler) {
@@ -464,6 +474,35 @@ bool DrawingWorkspace::eventFilter(QObject* watched, QEvent* event) {
     }
     const QSizeF pixelExtent = interactionSurface_->size();
     switch (event->type()) {
+    case QEvent::DragEnter: {
+        auto* dragEvent = static_cast<QDragEnterEvent*>(event);
+        if (dragEvent->mimeData()->hasFormat(
+                QStringLiteral("application/vnd.aimora.catalog-entry+json"))) {
+            dragEvent->acceptProposedAction();
+            return true;
+        }
+        return false;
+    }
+    case QEvent::Drop: {
+        auto* dropEvent = static_cast<QDropEvent*>(event);
+        const QByteArray payload = dropEvent->mimeData()->data(
+            QStringLiteral("application/vnd.aimora.catalog-entry+json"));
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(payload, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+            return false;
+        }
+        const QJsonObject object = document.object();
+        const QString catalogId = object.value(QStringLiteral("catalog_id")).toString();
+        const QString kind = object.value(QStringLiteral("kind")).toString();
+        const QPointF scenePoint = precisionViewport_.scenePoint(
+            dropEvent->position(), QSizeF{interactionSurface_->size()});
+        if (!requestEquipmentPlacement(catalogId, kind == QStringLiteral("assembly"), scenePoint)) {
+            return false;
+        }
+        dropEvent->acceptProposedAction();
+        return true;
+    }
     case QEvent::MouseMove: {
         auto* mouseEvent = static_cast<QMouseEvent*>(event);
         if (panning_) {
@@ -483,8 +522,8 @@ bool DrawingWorkspace::eventFilter(QObject* watched, QEvent* event) {
         auto* mouseEvent = static_cast<QMouseEvent*>(event);
         interactionSurface_->setFocus();
         updatePointer(mouseEvent->position());
-        if (mouseEvent->button() == Qt::MiddleButton
-            || (mouseEvent->button() == Qt::LeftButton && spacePanEnabled_)) {
+        if (mouseEvent->button() == Qt::MiddleButton ||
+            (mouseEvent->button() == Qt::LeftButton && spacePanEnabled_)) {
             panning_ = true;
             previousPanPixel_ = mouseEvent->position();
             interactionSurface_->setCursor(Qt::ClosedHandCursor);
@@ -494,7 +533,10 @@ bool DrawingWorkspace::eventFilter(QObject* watched, QEvent* event) {
             return false;
         }
         if (commandSession_.isActive()) {
-            const bool accepted = commandSession_.acceptPoint(pointerSnap_.scenePoint);
+            const bool accepted = commandSession_.acceptPoint(
+                pointerSnap_.scenePoint,
+                pointerSnap_.kind == commands::SnapKind::ElectricalPort ? pointerSnap_.semanticId
+                                                                        : QString{});
             Q_UNUSED(accepted);
             interactionSurface_->update();
             return true;
@@ -503,7 +545,7 @@ bool DrawingWorkspace::eventFilter(QObject* watched, QEvent* event) {
             sceneSurface_->hitTest(mouseEvent->position(), snapSettings_.tolerancePixels);
         if (!hits.isEmpty()) {
             selection_.applyHit(hits, selectionOperation(mouseEvent->modifiers()));
-            if(inspectionSelectionHandler_) {
+            if (inspectionSelectionHandler_) {
                 inspectionSelectionHandler_(selection_.selectedIds(), false);
             }
             interactionSurface_->update();
@@ -516,8 +558,8 @@ bool DrawingWorkspace::eventFilter(QObject* watched, QEvent* event) {
     }
     case QEvent::MouseButtonRelease: {
         auto* mouseEvent = static_cast<QMouseEvent*>(event);
-        if (panning_ && (mouseEvent->button() == Qt::MiddleButton
-                         || mouseEvent->button() == Qt::LeftButton)) {
+        if (panning_ &&
+            (mouseEvent->button() == Qt::MiddleButton || mouseEvent->button() == Qt::LeftButton)) {
             panning_ = false;
             interactionSurface_->setCursor(Qt::CrossCursor);
             return true;
@@ -532,12 +574,12 @@ bool DrawingWorkspace::eventFilter(QObject* watched, QEvent* event) {
         if (dragLength < minimumMarqueePixels) {
             selection_.applyHit(QVector<quint64>{}, operation);
         } else if (const auto scene = sceneSurface_->scene(); scene != nullptr) {
-            const auto records = selectionRecords(
-                scene->spatialIndex().query(marqueeSceneArea_.normalized()));
+            const auto records =
+                selectionRecords(scene->spatialIndex().query(marqueeSceneArea_.normalized()));
             selection_.applyMarquee(records, marqueeSceneArea_, crossing, operation);
         }
         marqueeActive_ = false;
-        if(inspectionSelectionHandler_) {
+        if (inspectionSelectionHandler_) {
             inspectionSelectionHandler_(selection_.selectedIds(), false);
         }
         interactionSurface_->update();
@@ -548,7 +590,7 @@ bool DrawingWorkspace::eventFilter(QObject* watched, QEvent* event) {
             completeCommand();
             return true;
         }
-        if(inspectionSelectionHandler_ && !selection_.selectedIds().isEmpty()) {
+        if (inspectionSelectionHandler_ && !selection_.selectedIds().isEmpty()) {
             inspectionSelectionHandler_(selection_.selectedIds(), true);
             return true;
         }
@@ -556,8 +598,8 @@ bool DrawingWorkspace::eventFilter(QObject* watched, QEvent* event) {
     case QEvent::Wheel: {
         auto* wheelEvent = static_cast<QWheelEvent*>(event);
         const qreal wheelSteps = wheelEvent->angleDelta().y() != 0
-            ? static_cast<qreal>(wheelEvent->angleDelta().y()) / 120.0
-            : static_cast<qreal>(wheelEvent->pixelDelta().y()) / 120.0;
+                                     ? static_cast<qreal>(wheelEvent->angleDelta().y()) / 120.0
+                                     : static_cast<qreal>(wheelEvent->pixelDelta().y()) / 120.0;
         if (precisionViewport_.zoomAt(wheelEvent->position(), pixelExtent, wheelSteps)) {
             applyViewport();
             updatePointer(wheelEvent->position());
@@ -628,16 +670,14 @@ void DrawingWorkspace::updatePointer(const QPointF& pixelPoint) {
     }
     const QPointF scenePoint = precisionViewport_.scenePoint(pixelPoint, pixelExtent);
     const qreal toleranceScene = snapSettings_.tolerancePixels / precisionViewport_.zoom;
-    const auto candidates = nearbySnapCandidates(sceneSurface_->scene(),
-                                                 scenePoint,
-                                                 toleranceScene,
-                                                 electricalPortSnaps_);
+    const auto candidates = nearbySnapCandidates(
+        sceneSurface_->scene(), scenePoint, toleranceScene, electricalPortSnaps_);
     pointerSnap_ = snapResolver_.resolve(scenePoint,
-                                        commandSession_.anchor(),
-                                        precisionViewport_,
-                                        pixelExtent,
-                                        candidates,
-                                        snapSettings_);
+                                         commandSession_.anchor(),
+                                         precisionViewport_,
+                                         pixelExtent,
+                                         candidates,
+                                         snapSettings_);
     commandSession_.updatePointer(pointerSnap_.scenePoint);
 }
 
@@ -651,14 +691,49 @@ void DrawingWorkspace::completeCommand() {
     if (!canonicalEditHandler_) {
         return;
     }
-    const auto request = commandSession_.complete(selection_.selectedIds());
+    auto request = commandSession_.complete(selection_.selectedIds());
     if (!request.has_value()) {
         return;
     }
-    if (canonicalEditHandler_(*request)) {
-        ++dispatchedCanonicalEditCount_;
+    for (const quint64 itemId : request->selectedItemIds) {
+        const QString semanticId = semanticItemIds_.value(itemId);
+        if (!semanticId.isEmpty() && !request->semanticIds.contains(semanticId)) {
+            request->semanticIds.append(semanticId);
+        }
     }
+    static_cast<void>(dispatchCanonicalEdit(std::move(*request)));
     interactionSurface_->update();
+}
+
+bool DrawingWorkspace::dispatchCanonicalEdit(commands::CanonicalEditRequest request) {
+    if (!canonicalEditHandler_ || request.commandId.isEmpty()) {
+        return false;
+    }
+    if (!canonicalEditHandler_(request)) {
+        return false;
+    }
+    ++dispatchedCanonicalEditCount_;
+    return true;
+}
+
+bool DrawingWorkspace::requestEquipmentPlacement(const QString& catalogId,
+                                                 const bool assembly,
+                                                 const QPointF& scenePoint) {
+    if (!canonicalEditHandler_ || catalogId.trimmed().isEmpty() || !std::isfinite(scenePoint.x()) ||
+        !std::isfinite(scenePoint.y()) || commandSession_.isActive() ||
+        commandSession_.begin(QStringView{u"equipment.place"}) !=
+            commands::CommandStartResult::Started ||
+        !commandSession_.acceptPoint(scenePoint, catalogId)) {
+        return false;
+    }
+    auto request = commandSession_.complete({});
+    if (!request.has_value()) {
+        commandSession_.cancel();
+        return false;
+    }
+    request->attributes.insert(QStringLiteral("catalog_id"), catalogId);
+    request->attributes.insert(QStringLiteral("assembly"), assembly);
+    return dispatchCanonicalEdit(std::move(*request));
 }
 
 } // namespace aimora::studio::shell

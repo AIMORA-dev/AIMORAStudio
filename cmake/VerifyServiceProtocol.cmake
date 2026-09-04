@@ -28,7 +28,7 @@ foreach(relative_path IN LISTS required_protocol_paths)
     endif()
 endforeach()
 
-set(expected_schema_sha "f20a87f79c6a04be59c9e4971753b480dd0a0b3eb09ed2dfce657b4ad02fac38")
+set(expected_schema_sha "56a1d3fb974581692dfb490408db39cc02ee2ff9aaef139e0334f2484c6cff36")
 file(
     READ
     "${AIMORA_SOURCE_DIR}/packages/protocol/include/aimora/studio/protocol/generated/service_protocol.hpp"
