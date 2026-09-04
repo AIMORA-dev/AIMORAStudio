@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/aimora/catalog">
+        <file alias="equipment_catalog.json">equipment_catalog.json</file>
+    </qresource>
+</RCC>

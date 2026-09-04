@@ -25,9 +25,7 @@ target_link_libraries(
 
 qt_add_resources(
     aimora_equipment_catalog_resources
-    PREFIX "/aimora/catalog"
-    BASE resources
-    FILES resources/equipment_catalog.json
+    resources/equipment_catalog.qrc
 )
 
 target_sources(aimora_studio_catalog PRIVATE ${aimora_equipment_catalog_resources})
