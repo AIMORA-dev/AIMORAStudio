@@ -75,7 +75,7 @@ void InteractionTests::wheelZoomKeepsCursorScenePointFixed() {
     const QPointF before = viewport.scenePoint(cursor, extent);
     QVERIFY(viewport.zoomAt(cursor, extent, 3.0));
     const QPointF after = viewport.scenePoint(cursor, extent);
-    QVERIFY(QLineF{before, after}.length() < 1.0e-9);
+    QVERIFY((QLineF{before, after}.length() < 1.0e-9));
     const QPointF centerBeforePan = viewport.center;
     viewport.panBy({20.0, -10.0});
     QCOMPARE(viewport.center,

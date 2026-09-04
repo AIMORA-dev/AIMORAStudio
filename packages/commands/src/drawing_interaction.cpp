@@ -526,7 +526,7 @@ qsizetype DrawingCommandSession::minimumPointCount(QStringView commandId) noexce
 }
 
 QString DrawingCommandSession::resolveCommand(QStringView commandOrAlias) const {
-    const QString normalized = commandOrAlias.toString().trimmed().toLower();
+    QString normalized = commandOrAlias.toString().trimmed().toLower();
     if (aliases_.contains(normalized)) {
         return aliases_.value(normalized);
     }
