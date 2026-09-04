@@ -15,6 +15,7 @@
 #include <QStringList>
 #include <QStringView>
 #include <QWidget>
+#include <cstdint>
 #include <memory>
 
 class QAction;
@@ -24,7 +25,7 @@ class QMenu;
 
 namespace aimora::studio::shell {
 
-enum class WorkspaceRestoreStatus {
+enum class WorkspaceRestoreStatus : std::uint8_t {
     Restored,
     NoSavedState,
     InvalidState,

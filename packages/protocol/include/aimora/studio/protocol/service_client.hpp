@@ -10,6 +10,7 @@
 #include <QObject>
 #include <QSet>
 #include <QString>
+#include <cstdint>
 
 class QLocalSocket;
 
@@ -18,8 +19,8 @@ namespace aimora::studio::protocol {
 class ServiceClient final : public QObject {
     Q_OBJECT
 
-public:
-    enum class State {
+  public:
+    enum class State : std::uint8_t {
         Disconnected,
         Connecting,
         Authenticating,
@@ -42,35 +43,27 @@ public:
 
     void connectToService();
     void close();
-    [[nodiscard]] QString sendRequest(
-        generated::Method method,
-        QJsonObject parameters = {}
-    );
+    [[nodiscard]] QString sendRequest(generated::Method method, QJsonObject parameters = {});
     [[nodiscard]] QString cancelRequest(QString targetRequestId);
 
-signals:
+  signals:
     void stateChanged(aimora::studio::protocol::ServiceClient::State state);
     void ready();
-    void responseReceived(
-        const QString& requestId,
-        bool ok,
-        const QJsonObject& result,
-        const QString& errorCode,
-        const QString& errorMessage
-    );
+    void responseReceived(const QString& requestId,
+                          bool ok,
+                          const QJsonObject& result,
+                          const QString& errorCode,
+                          const QString& errorMessage);
     void binaryPayloadReceived(const QJsonObject& metadata, const QByteArray& data);
     void failed(const QString& code, const QString& message);
     void disconnected();
 
-private:
+  private:
     void setState(State state);
     void fail(QString code, QString message);
     void authenticate();
-    [[nodiscard]] QString sendRequestInternal(
-        generated::Method method,
-        QJsonObject parameters,
-        bool allowBeforeReady
-    );
+    [[nodiscard]] QString
+    sendRequestInternal(generated::Method method, QJsonObject parameters, bool allowBeforeReady);
     void writeBytes(const QByteArray& bytes);
     void processInput();
     void processControlFrame(const ServiceFrame& frame);

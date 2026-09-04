@@ -23,5 +23,6 @@ WarningsAsErrors: >
   performance-*,
   portability-*
 HeaderFilterRegex: '(^|/)(apps|packages)/'
+ExcludeHeaderFilterRegex: '(^|/)packages/.*/generated/'
 FormatStyle: file
 ...

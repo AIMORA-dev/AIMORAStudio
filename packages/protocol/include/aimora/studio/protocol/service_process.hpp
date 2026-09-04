@@ -8,7 +8,7 @@
 #include <QProcess>
 #include <QString>
 #include <QStringList>
-
+#include <cstdint>
 #include <memory>
 
 class QTemporaryDir;
@@ -33,8 +33,8 @@ struct ServiceLaunchConfiguration final {
 class ServiceProcess final : public QObject {
     Q_OBJECT
 
-public:
-    enum class State {
+  public:
+    enum class State : std::uint8_t {
         Stopped,
         Starting,
         Authenticating,
@@ -59,14 +59,14 @@ public:
     void stop();
     void restart();
 
-signals:
+  signals:
     void stateChanged(aimora::studio::protocol::ServiceProcess::State state);
     void ready(aimora::studio::protocol::ServiceClient* client);
     void stopped();
     void restarted(int attempt);
     void failed(const QString& code, const QString& message);
 
-private:
+  private:
     void setState(State state);
     void fail(QString code, QString message);
     [[nodiscard]] bool prepareSession();

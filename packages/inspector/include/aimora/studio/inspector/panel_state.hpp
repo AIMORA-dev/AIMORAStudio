@@ -2,10 +2,11 @@
 #pragma once
 
 #include <QSize>
+#include <cstdint>
 
 namespace aimora::studio::inspector {
 
-enum class PanelPresentation {
+enum class PanelPresentation : std::uint8_t {
     Hidden,
     Overlay,
     Docked,

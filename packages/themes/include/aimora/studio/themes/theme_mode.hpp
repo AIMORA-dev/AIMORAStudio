@@ -3,12 +3,12 @@
 
 #include <QString>
 #include <QStringView>
-
+#include <cstdint>
 #include <optional>
 
 namespace aimora::studio::themes {
 
-enum class ThemeMode {
+enum class ThemeMode : std::uint8_t {
     System,
     Light,
     Dark,

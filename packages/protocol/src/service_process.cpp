@@ -462,8 +462,9 @@ void ServiceProcess::cleanupSession() {
 QByteArray ServiceProcess::createSessionToken() {
     QByteArray bytes;
     bytes.resize(32);
+    QRandomGenerator generator = QRandomGenerator::securelySeeded();
     for(qsizetype index = 0; index < bytes.size(); ++index) {
-        bytes[index] = static_cast<char>(QRandomGenerator::system()->generate() & 0xffU);
+        bytes[index] = static_cast<char>(generator.generate() & 0xffU);
     }
     return bytes.toHex();
 }

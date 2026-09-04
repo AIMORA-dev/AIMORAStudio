@@ -194,7 +194,7 @@ QImage PainterSceneRenderer::renderReferenceImage(const RetainedScene& scene,
     image.setDevicePixelRatio(devicePixelRatio);
     image.fill(palette.canvas);
     QPainter painter{&image};
-    render(painter, scene, viewport, QSizeF{pixelSize}, palette);
+    (void)render(painter, scene, viewport, QSizeF{pixelSize}, palette);
     painter.end();
     return image;
 }

@@ -4,10 +4,11 @@
 #include <QByteArray>
 #include <QString>
 #include <QtTypes>
+#include <cstdint>
 
 namespace aimora::studio::protocol {
 
-enum class LocalTransport {
+enum class LocalTransport : std::uint8_t {
     LocalSocket,
     NamedPipe,
 };

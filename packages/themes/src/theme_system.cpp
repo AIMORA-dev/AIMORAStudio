@@ -5,7 +5,6 @@
 #include <QGuiApplication>
 #include <QSettings>
 #include <QStyleHints>
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -16,16 +15,16 @@ namespace {
 constexpr double minimumTextContrast = 4.5;
 
 [[nodiscard]] double linearizedChannel(double channel) noexcept {
-    if(channel <= 0.04045) {
+    if (channel <= 0.04045) {
         return channel / 12.92;
     }
     return std::pow((channel + 0.055) / 1.055, 2.4);
 }
 
 [[nodiscard]] double relativeLuminance(const QColor& color) noexcept {
-    return (0.2126 * linearizedChannel(color.redF()))
-        + (0.7152 * linearizedChannel(color.greenF()))
-        + (0.0722 * linearizedChannel(color.blueF()));
+    return (0.2126 * linearizedChannel(static_cast<double>(color.redF()))) +
+           (0.7152 * linearizedChannel(static_cast<double>(color.greenF()))) +
+           (0.0722 * linearizedChannel(static_cast<double>(color.blueF())));
 }
 
 [[nodiscard]] QString cssColor(const QColor& color) {
@@ -56,24 +55,23 @@ bool ThemeTokens::isValid() const noexcept {
         &conductor,
     };
 
-    const bool colorsAreOpaque = std::all_of(
-        colors.cbegin(),
-        colors.cend(),
-        [](const QColor* color) { return color->isValid() && color->alpha() == 255; }
-    );
-    if(!colorsAreOpaque) {
+    const bool colorsAreOpaque =
+        std::all_of(colors.cbegin(), colors.cend(), [](const QColor* color) {
+            return color->isValid() && color->alpha() == 255;
+        });
+    if (!colorsAreOpaque) {
         return false;
     }
 
-    return contrastRatio(textPrimary, window) >= minimumTextContrast
-        && contrastRatio(textPrimary, panel) >= minimumTextContrast
-        && contrastRatio(textPrimary, canvas) >= minimumTextContrast
-        && contrastRatio(textSecondary, window) >= minimumTextContrast
-        && contrastRatio(accentText, accent) >= minimumTextContrast;
+    return contrastRatio(textPrimary, window) >= minimumTextContrast &&
+           contrastRatio(textPrimary, panel) >= minimumTextContrast &&
+           contrastRatio(textPrimary, canvas) >= minimumTextContrast &&
+           contrastRatio(textSecondary, window) >= minimumTextContrast &&
+           contrastRatio(accentText, accent) >= minimumTextContrast;
 }
 
 double contrastRatio(const QColor& foreground, const QColor& background) noexcept {
-    if(!foreground.isValid() || !background.isValid()) {
+    if (!foreground.isValid() || !background.isValid()) {
         return 0.0;
     }
 
@@ -162,34 +160,27 @@ QPalette makeApplicationPalette(const ThemeTokens& tokens) {
 }
 
 QString makeApplicationStyleSheet(const ThemeTokens& tokens) {
-    return QStringLiteral(
-               "QToolTip { color: %1; background-color: %2; border: 1px solid %3; "
-               "padding: 4px; }"
-               "QMenuBar::item:selected, QMenu::item:selected { "
-               "background-color: %4; color: %1; }"
-               "QDockWidget::title { background-color: %5; color: %1; "
-               "border-bottom: 1px solid %3; padding: 6px; }"
-               "QWidget#aimoraDrawingWorkspace { background-color: %6; }"
-               "QWidget[aimoraPanel=\"true\"] { background-color: %2; }"
-           )
-        .arg(
-            cssColor(tokens.textPrimary),
-            cssColor(tokens.panel),
-            cssColor(tokens.border),
-            cssColor(tokens.selection),
-            cssColor(tokens.panelAlternate),
-            cssColor(tokens.canvas)
-        );
+    return QStringLiteral("QToolTip { color: %1; background-color: %2; border: 1px solid %3; "
+                          "padding: 4px; }"
+                          "QMenuBar::item:selected, QMenu::item:selected { "
+                          "background-color: %4; color: %1; }"
+                          "QDockWidget::title { background-color: %5; color: %1; "
+                          "border-bottom: 1px solid %3; padding: 6px; }"
+                          "QWidget#aimoraDrawingWorkspace { background-color: %6; }"
+                          "QWidget[aimoraPanel=\"true\"] { background-color: %2; }")
+        .arg(cssColor(tokens.textPrimary),
+             cssColor(tokens.panel),
+             cssColor(tokens.border),
+             cssColor(tokens.selection),
+             cssColor(tokens.panelAlternate),
+             cssColor(tokens.canvas));
 }
 
-ThemeSettings::ThemeSettings(QSettings& settings) noexcept
-    : settings_{settings} {}
+ThemeSettings::ThemeSettings(QSettings& settings) noexcept : settings_{settings} {}
 
 ThemeMode ThemeSettings::loadMode() const {
-    const QString stored = settings_.value(
-        QStringLiteral("appearance/theme"),
-        toString(ThemeMode::System)
-    ).toString();
+    const QString stored =
+        settings_.value(QStringLiteral("appearance/theme"), toString(ThemeMode::System)).toString();
     return parseThemeMode(stored).value_or(ThemeMode::System);
 }
 
@@ -198,25 +189,19 @@ void ThemeSettings::saveMode(ThemeMode mode) {
     settings_.sync();
 }
 
-ThemeController::ThemeController(
-    QApplication& application,
-    ThemeSettings& settings,
-    QObject* parent
-)
-    : QObject{parent},
-      application_{application},
-      settings_{settings},
+ThemeController::ThemeController(QApplication& application,
+                                 ThemeSettings& settings,
+                                 QObject* parent)
+    : QObject{parent}, application_{application}, settings_{settings},
       requestedMode_{settings_.loadMode()} {
-    connect(
-        QGuiApplication::styleHints(),
-        &QStyleHints::colorSchemeChanged,
-        this,
-        [this](Qt::ColorScheme) {
-            if(requestedMode_ == ThemeMode::System) {
-                refreshSystemAppearance();
-            }
-        }
-    );
+    connect(QGuiApplication::styleHints(),
+            &QStyleHints::colorSchemeChanged,
+            this,
+            [this](Qt::ColorScheme) {
+                if (requestedMode_ == ThemeMode::System) {
+                    refreshSystemAppearance();
+                }
+            });
     applyTheme(false);
 }
 
@@ -247,27 +232,24 @@ ThemeMode ThemeController::detectSystemMode() const noexcept {
 }
 
 void ThemeController::applyTheme(bool persist) {
-    if(persist) {
+    if (persist) {
         settings_.saveMode(requestedMode_);
     }
 
-    const ThemeMode nextEffective = requestedMode_ == ThemeMode::System
-        ? detectSystemMode()
-        : requestedMode_;
-    const ThemeTokens nextTokens = nextEffective == ThemeMode::Dark
-        ? darkThemeTokens()
-        : lightThemeTokens();
+    const ThemeMode nextEffective =
+        requestedMode_ == ThemeMode::System ? detectSystemMode() : requestedMode_;
+    const ThemeTokens nextTokens =
+        nextEffective == ThemeMode::Dark ? darkThemeTokens() : lightThemeTokens();
 
-    const bool changed = nextEffective != effectiveMode_
-        || nextTokens.canvas != tokens_.canvas
-        || nextTokens.window != tokens_.window;
+    const bool changed = nextEffective != effectiveMode_ || nextTokens.canvas != tokens_.canvas ||
+                         nextTokens.window != tokens_.window;
     effectiveMode_ = nextEffective;
     tokens_ = nextTokens;
 
     application_.setPalette(makeApplicationPalette(tokens_));
     application_.setStyleSheet(makeApplicationStyleSheet(tokens_));
 
-    if(changed || persist) {
+    if (changed || persist) {
         emit themeChanged(requestedMode_, effectiveMode_);
     }
 }

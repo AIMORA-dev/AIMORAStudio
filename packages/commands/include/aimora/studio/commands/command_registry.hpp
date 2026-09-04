@@ -6,7 +6,7 @@
 #include <QList>
 #include <QString>
 #include <QStringView>
-
+#include <cstdint>
 #include <optional>
 
 namespace aimora::studio::commands {
@@ -20,21 +20,21 @@ struct CommandDefinition final {
     [[nodiscard]] bool isValid() const;
 };
 
-enum class RegistrationResult {
+enum class RegistrationResult : std::uint8_t {
     Added,
     DuplicateId,
     InvalidDefinition,
 };
 
 class CommandRegistry final {
-public:
+  public:
     [[nodiscard]] RegistrationResult registerCommand(CommandDefinition definition);
     [[nodiscard]] bool contains(QStringView id) const;
     [[nodiscard]] std::optional<CommandDefinition> find(QStringView id) const;
     [[nodiscard]] QList<CommandDefinition> orderedCommands() const;
     [[nodiscard]] qsizetype size() const noexcept;
 
-private:
+  private:
     QHash<QString, CommandDefinition> commands_;
 };
 

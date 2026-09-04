@@ -6,12 +6,12 @@
 #include <QByteArray>
 #include <QJsonObject>
 #include <QString>
-
+#include <cstdint>
 #include <optional>
 
 namespace aimora::studio::protocol {
 
-enum class FrameKind : unsigned char {
+enum class FrameKind : std::uint8_t {
     Control = 1,
     Binary = 2,
 };
@@ -26,7 +26,7 @@ struct BinaryPayload final {
     QByteArray data;
 };
 
-enum class FrameDecodeStatus {
+enum class FrameDecodeStatus : std::uint8_t {
     Complete,
     NeedMoreData,
     Invalid,
@@ -40,31 +40,18 @@ struct FrameDecodeResult final {
     QString message;
 };
 
-[[nodiscard]] QByteArray encodeFrame(
-    const ServiceFrame& frame,
-    const ClientLimits& limits = ClientLimits{}
-);
-[[nodiscard]] FrameDecodeResult takeFrame(
-    QByteArray& buffer,
-    const ClientLimits& limits = ClientLimits{}
-);
-[[nodiscard]] QByteArray encodeControlMessage(
-    const QJsonObject& object,
-    const ClientLimits& limits = ClientLimits{}
-);
-[[nodiscard]] std::optional<QJsonObject> decodeControlMessage(
-    const ServiceFrame& frame,
-    QString* errorCode = nullptr,
-    QString* message = nullptr
-);
-[[nodiscard]] QByteArray encodeBinaryPayload(
-    const QJsonObject& metadata,
-    const QByteArray& data
-);
-[[nodiscard]] std::optional<BinaryPayload> decodeBinaryPayload(
-    const ServiceFrame& frame,
-    QString* errorCode = nullptr,
-    QString* message = nullptr
-);
+[[nodiscard]] QByteArray encodeFrame(const ServiceFrame& frame,
+                                     const ClientLimits& limits = ClientLimits{});
+[[nodiscard]] FrameDecodeResult takeFrame(QByteArray& buffer,
+                                          const ClientLimits& limits = ClientLimits{});
+[[nodiscard]] QByteArray encodeControlMessage(const QJsonObject& object,
+                                              const ClientLimits& limits = ClientLimits{});
+[[nodiscard]] std::optional<QJsonObject> decodeControlMessage(const ServiceFrame& frame,
+                                                              QString* errorCode = nullptr,
+                                                              QString* message = nullptr);
+[[nodiscard]] QByteArray encodeBinaryPayload(const QJsonObject& metadata, const QByteArray& data);
+[[nodiscard]] std::optional<BinaryPayload> decodeBinaryPayload(const ServiceFrame& frame,
+                                                               QString* errorCode = nullptr,
+                                                               QString* message = nullptr);
 
 } // namespace aimora::studio::protocol

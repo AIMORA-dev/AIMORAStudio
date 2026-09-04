@@ -239,7 +239,7 @@ RetainedScene::RetainedScene(const quint64 generation,
                              SceneStatistics statistics)
     : generation_{generation}, styles_{std::move(styles)}, segments_{std::move(segments)},
       symbolGeometries_{std::move(symbolGeometries)}, symbolInstances_{std::move(symbolInstances)},
-      texts_{std::move(texts)}, page_{std::move(page)}, overlays_{std::move(overlays)},
+      texts_{std::move(texts)}, page_{page}, overlays_{std::move(overlays)},
       spatialIndex_{std::move(spatialIndex)}, statistics_{statistics} {}
 
 quint64 RetainedScene::generation() const noexcept {
@@ -485,14 +485,14 @@ SceneCompileResult RetainedSceneCompiler::compile(const SceneDocument& document,
                                           source.id});
             return result;
         }
-        const QRectF bounds =
-            source.bounds.isValid()
-                ? source.bounds
-                : QRectF{source.position.x(),
-                         source.position.y() - source.pointSize,
-                         std::max<qreal>(source.pointSize,
-                                         source.text.size() * source.pointSize * 0.6),
-                         source.pointSize * 1.3};
+        const QRectF bounds = source.bounds.isValid()
+                                  ? source.bounds
+                                  : QRectF{source.position.x(),
+                                           source.position.y() - source.pointSize,
+                                           std::max<qreal>(source.pointSize,
+                                                           static_cast<qreal>(source.text.size()) *
+                                                               source.pointSize * 0.6),
+                                           source.pointSize * 1.3};
         texts.push_back({source.id,
                          source.text,
                          source.position,
@@ -575,7 +575,7 @@ SceneCompileResult RetainedSceneCompiler::compile(const SceneDocument& document,
                                                          std::move(geometries),
                                                          std::move(instances),
                                                          std::move(texts),
-                                                         std::move(page),
+                                                         page,
                                                          std::move(overlays),
                                                          std::move(spatialIndex),
                                                          statistics);
