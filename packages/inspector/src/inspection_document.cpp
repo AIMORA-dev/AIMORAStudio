@@ -363,7 +363,9 @@ void InspectionDraft::setEdit(QString path, QJsonValue value, QString displayUni
         edits_.remove(path);
         return;
     }
-    edits_.insert(path, InspectionEdit{std::move(path), std::move(value), std::move(displayUnit)});
+    const QString key = path;
+    InspectionEdit edit{std::move(path), std::move(value), std::move(displayUnit)};
+    edits_.insert(key, std::move(edit));
 }
 
 void InspectionDraft::removeEdit(const QString& path) {

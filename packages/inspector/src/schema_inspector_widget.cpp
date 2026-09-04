@@ -17,7 +17,6 @@
 #include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
-#include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSet>
@@ -158,9 +157,9 @@ enum class RequestOperation : std::uint8_t {
 
 struct EditorBinding final {
     InspectionField field;
-    QPointer<QWidget> editor;
-    QPointer<QComboBox> unit;
-    QPointer<JsonTableModel> table;
+    QWidget* editor{nullptr};
+    QComboBox* unit{nullptr};
+    JsonTableModel* table{nullptr};
 };
 
 [[nodiscard]] QStringList jsonStringArray(const QJsonValue& value) {
@@ -202,24 +201,25 @@ void clearLayout(QLayout* layout) {
 } // namespace
 
 struct SchemaInspectorWidget::State final {
-    QPointer<protocol::ServiceClient> client;
+    protocol::ServiceClient* client{nullptr};
     QMetaObject::Connection responseConnection;
     QMetaObject::Connection detailsConnection;
+    QMetaObject::Connection destroyedConnection;
     QHash<QString, RequestOperation> pending;
     QHash<QString, QJsonObject> failureDetails;
     std::optional<InspectionIdentity> requestedIdentity;
     std::optional<InspectionDocument> document;
     InspectionDraft draft;
     QHash<QString, EditorBinding> editors;
-    QPointer<QLabel> identityLabel;
-    QPointer<QLabel> statusLabel;
-    QPointer<QWidget> sectionContainer;
-    QPointer<QVBoxLayout> sectionLayout;
-    QPointer<QPushButton> applyButton;
-    QPointer<QPushButton> revertButton;
-    QPointer<QPushButton> reloadButton;
-    QPointer<QPushButton> undoButton;
-    QPointer<QPushButton> redoButton;
+    QLabel* identityLabel{nullptr};
+    QLabel* statusLabel{nullptr};
+    QWidget* sectionContainer{nullptr};
+    QVBoxLayout* sectionLayout{nullptr};
+    QPushButton* applyButton{nullptr};
+    QPushButton* revertButton{nullptr};
+    QPushButton* reloadButton{nullptr};
+    QPushButton* undoButton{nullptr};
+    QPushButton* redoButton{nullptr};
     bool stale{false};
 };
 
@@ -268,11 +268,11 @@ SchemaInspectorWidget::SchemaInspectorWidget(QWidget* parent)
     state_->reloadButton->setObjectName(QStringLiteral("aimora.inspector.reload"));
     state_->undoButton->setObjectName(QStringLiteral("aimora.inspector.undo"));
     state_->redoButton->setObjectName(QStringLiteral("aimora.inspector.redo"));
-    for (QPushButton* button : {state_->undoButton.data(),
-                                state_->redoButton.data(),
-                                state_->reloadButton.data(),
-                                state_->revertButton.data(),
-                                state_->applyButton.data()}) {
+    for (QPushButton* button : {state_->undoButton,
+                                state_->redoButton,
+                                state_->reloadButton,
+                                state_->revertButton,
+                                state_->applyButton}) {
         actions->addWidget(button);
     }
     rootLayout->addLayout(actions);
@@ -303,6 +303,7 @@ void SchemaInspectorWidget::bindServiceClient(protocol::ServiceClient* client) {
     }
     QObject::disconnect(state_->responseConnection);
     QObject::disconnect(state_->detailsConnection);
+    QObject::disconnect(state_->destroyedConnection);
     state_->client = client;
     state_->pending.clear();
     state_->failureDetails.clear();
@@ -318,6 +319,12 @@ void SchemaInspectorWidget::bindServiceClient(protocol::ServiceClient* client) {
                 [this](const QString& requestId, const QJsonObject& details) {
                     state_->failureDetails.insert(requestId, details);
                 });
+    state_->destroyedConnection = connect(client, &QObject::destroyed, this, [this]() {
+        state_->client = nullptr;
+        state_->pending.clear();
+        setStatus(tr("The Julia inspection service was closed."), true);
+        updateActions();
+    });
     state_->responseConnection =
         connect(client,
                 &protocol::ServiceClient::responseReceived,
@@ -420,7 +427,12 @@ void SchemaInspectorWidget::renderDocument() {
             auto* editorContainer = new QWidget{group};
             auto* editorLayout = new QHBoxLayout{editorContainer};
             editorLayout->setContentsMargins(0, 0, 0, 0);
-            EditorBinding binding{.field = field};
+            EditorBinding binding{
+                .field = field,
+                .editor = nullptr,
+                .unit = nullptr,
+                .table = nullptr,
+            };
 
             if (field.kind == QStringLiteral("boolean")) {
                 auto* editor = new QCheckBox{editorContainer};
@@ -577,17 +589,17 @@ void SchemaInspectorWidget::stageScalar(const QString& path) {
         return;
     }
     QJsonValue edited;
-    if (auto* checkBox = qobject_cast<QCheckBox*>(iterator->editor.data())) {
+    if (auto* checkBox = qobject_cast<QCheckBox*>(iterator->editor)) {
         if (checkBox->checkState() == Qt::PartiallyChecked) {
             return;
         }
         edited = checkBox->isChecked();
-    } else if (auto* combo = qobject_cast<QComboBox*>(iterator->editor.data())) {
+    } else if (auto* combo = qobject_cast<QComboBox*>(iterator->editor)) {
         if (!combo->currentData().isValid()) {
             return;
         }
         edited = QJsonValue::fromVariant(combo->currentData());
-    } else if (auto* lineEdit = qobject_cast<QLineEdit*>(iterator->editor.data())) {
+    } else if (auto* lineEdit = qobject_cast<QLineEdit*>(iterator->editor)) {
         const QJsonValue reference = state_->document->values.value(path).value;
         const auto parsed = inspectionJsonValue(lineEdit->text(), reference);
         if (!parsed.has_value()) {
@@ -702,7 +714,8 @@ void SchemaInspectorWidget::handleResponse(const QString& requestId,
         return;
     }
     if (operation == RequestOperation::Describe) {
-        setDocument(result);
+        const bool loaded = setDocument(result);
+        Q_UNUSED(loaded);
         return;
     }
     const QString status = result.value(QStringLiteral("status")).toString();
