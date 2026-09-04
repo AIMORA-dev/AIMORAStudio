@@ -16,6 +16,7 @@ Checks: >
   bugprone-use-after-move,
   modernize-use-nullptr,
   performance-*,
+  -performance-enum-size,
   portability-*
 WarningsAsErrors: >
   clang-analyzer-*,
@@ -23,6 +24,5 @@ WarningsAsErrors: >
   performance-*,
   portability-*
 HeaderFilterRegex: '(^|/)(apps|packages)/'
-ExcludeHeaderFilterRegex: '(^|/)packages/.*/generated/'
 FormatStyle: file
 ...

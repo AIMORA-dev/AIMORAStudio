@@ -9,7 +9,6 @@
 #include <QPainter>
 #include <QResizeEvent>
 #include <QRhiWidget>
-#include <QShader>
 #include <QStackedLayout>
 #include <QVBoxLayout>
 #include <algorithm>
