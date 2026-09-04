@@ -13,24 +13,29 @@
 
 namespace generated = aimora::studio::protocol::generated;
 using aimora::studio::protocol::ClientLimits;
-using aimora::studio::protocol::FrameDecodeStatus;
-using aimora::studio::protocol::FrameKind;
-using aimora::studio::protocol::ServiceFrame;
-using aimora::studio::protocol::ServiceLaunchConfiguration;
-using aimora::studio::protocol::ServiceProcess;
 using aimora::studio::protocol::decodeBinaryPayload;
 using aimora::studio::protocol::decodeControlMessage;
 using aimora::studio::protocol::encodeBinaryPayload;
 using aimora::studio::protocol::encodeControlMessage;
 using aimora::studio::protocol::encodeFrame;
+using aimora::studio::protocol::FrameDecodeStatus;
+using aimora::studio::protocol::FrameKind;
 using aimora::studio::protocol::makeRequest;
 using aimora::studio::protocol::parseResponse;
+using aimora::studio::protocol::ServiceFrame;
+using aimora::studio::protocol::ServiceLaunchConfiguration;
+using aimora::studio::protocol::ServiceProcess;
 using aimora::studio::protocol::takeFrame;
+
+[[nodiscard]] QString generatedProtocolVersion() {
+    return QString::fromLatin1(generated::protocolVersion.data(),
+                               static_cast<qsizetype>(generated::protocolVersion.size()));
+}
 
 class ProtocolTests final : public QObject {
     Q_OBJECT
 
-private slots:
+  private slots:
     void generatedBindingsMatchCanonicalSchema();
     void controlFramesRoundTripIncrementally();
     void malformedAndOversizedFramesAreRejected();
@@ -43,27 +48,13 @@ private slots:
 };
 
 void ProtocolTests::generatedBindingsMatchCanonicalSchema() {
-    QCOMPARE(
-        QString::fromLatin1(
-            generated::protocolVersion.data(),
-            static_cast<qsizetype>(generated::protocolVersion.size())
-        ),
-        QStringLiteral("1.1")
-    );
-    QCOMPARE(
-        QString::fromLatin1(
-            generated::serviceVersion.data(),
-            static_cast<qsizetype>(generated::serviceVersion.size())
-        ),
-        QStringLiteral("0.2.0")
-    );
-    QCOMPARE(
-        QString::fromLatin1(
-            generated::schemaSha256.data(),
-            static_cast<qsizetype>(generated::schemaSha256.size())
-        ),
-        QStringLiteral("f20a87f79c6a04be59c9e4971753b480dd0a0b3eb09ed2dfce657b4ad02fac38")
-    );
+    QCOMPARE(generatedProtocolVersion(), QStringLiteral("1.2"));
+    QCOMPARE(QString::fromLatin1(generated::serviceVersion.data(),
+                                 static_cast<qsizetype>(generated::serviceVersion.size())),
+             QStringLiteral("0.3.0"));
+    QCOMPARE(QString::fromLatin1(generated::schemaSha256.data(),
+                                 static_cast<qsizetype>(generated::schemaSha256.size())),
+             QStringLiteral("56a1d3fb974581692dfb490408db39cc02ee2ff9aaef139e0334f2484c6cff36"));
     QCOMPARE(generated::frameHeaderBytes, 12);
     QCOMPARE(generated::methodName(generated::Method::ServiceHello),
              QStringLiteral("service.hello"));
@@ -76,11 +67,9 @@ void ProtocolTests::generatedBindingsMatchCanonicalSchema() {
 
 void ProtocolTests::controlFramesRoundTripIncrementally() {
     ClientLimits limits;
-    const QJsonObject request = makeRequest(
-        QStringLiteral("test-1"),
-        generated::Method::ServicePing,
-        {{QStringLiteral("nonce"), QStringLiteral("abc")}}
-    );
+    const QJsonObject request = makeRequest(QStringLiteral("test-1"),
+                                            generated::Method::ServicePing,
+                                            {{QStringLiteral("nonce"), QStringLiteral("abc")}});
     const QByteArray encoded = encodeControlMessage(request, limits);
     QVERIFY(!encoded.isEmpty());
 
@@ -129,7 +118,7 @@ void ProtocolTests::binaryPayloadRoundTrips() {
 
 void ProtocolTests::responseEnvelopeIsStrict() {
     const QJsonObject valid{
-        {QStringLiteral("protocol_version"), QStringLiteral("1.1")},
+        {QStringLiteral("protocol_version"), generatedProtocolVersion()},
         {QStringLiteral("request_id"), QStringLiteral("test-2")},
         {QStringLiteral("ok"), true},
         {QStringLiteral("result"), QJsonObject{{QStringLiteral("value"), 1}}},
@@ -172,23 +161,17 @@ void ProtocolTests::serviceProcessAuthenticatesAndSupportsLifecycle() {
     QVERIFY(process.client()->isReady());
     QCOMPARE(readySpy.count(), 1);
 
-    QSignalSpy responseSpy{
-        process.client(),
-        &aimora::studio::protocol::ServiceClient::responseReceived
-    };
+    QSignalSpy responseSpy{process.client(),
+                           &aimora::studio::protocol::ServiceClient::responseReceived};
     const QString pingId = process.client()->sendRequest(
-        generated::Method::ServicePing,
-        {{QStringLiteral("nonce"), QStringLiteral("round-trip")}}
-    );
+        generated::Method::ServicePing, {{QStringLiteral("nonce"), QStringLiteral("round-trip")}});
     QVERIFY(!pingId.isEmpty());
     QTRY_COMPARE_WITH_TIMEOUT(responseSpy.count(), 1, 3000);
     const QList<QVariant> pingArguments = responseSpy.takeFirst();
     QCOMPARE(pingArguments.at(0).toString(), pingId);
     QVERIFY(pingArguments.at(1).toBool());
-    QCOMPARE(
-        pingArguments.at(2).toJsonObject().value(QStringLiteral("nonce")).toString(),
-        QStringLiteral("round-trip")
-    );
+    QCOMPARE(pingArguments.at(2).toJsonObject().value(QStringLiteral("nonce")).toString(),
+             QStringLiteral("round-trip"));
 
     const QString cancelId = process.client()->cancelRequest(QStringLiteral("target-1"));
     QVERIFY(!cancelId.isEmpty());
@@ -197,12 +180,8 @@ void ProtocolTests::serviceProcessAuthenticatesAndSupportsLifecycle() {
     QCOMPARE(cancelArguments.at(0).toString(), cancelId);
     QVERIFY(cancelArguments.at(1).toBool());
     QCOMPARE(
-        cancelArguments.at(2)
-            .toJsonObject()
-            .value(QStringLiteral("target_request_id"))
-            .toString(),
-        QStringLiteral("target-1")
-    );
+        cancelArguments.at(2).toJsonObject().value(QStringLiteral("target_request_id")).toString(),
+        QStringLiteral("target-1"));
 
     const QJsonObject inspectorIdentity{
         {QStringLiteral("project_id"), QStringLiteral("project.1")},
@@ -210,17 +189,15 @@ void ProtocolTests::serviceProcessAuthenticatesAndSupportsLifecycle() {
         {QStringLiteral("projection_id"), QStringLiteral("projection.breaker.1")},
         {QStringLiteral("view_id"), QStringLiteral("view.sld.1")},
     };
-    const QString describeId = process.client()->sendRequest(
-        generated::Method::InspectorDescribe, inspectorIdentity);
+    const QString describeId =
+        process.client()->sendRequest(generated::Method::InspectorDescribe, inspectorIdentity);
     QVERIFY(!describeId.isEmpty());
     QTRY_COMPARE_WITH_TIMEOUT(responseSpy.count(), 1, 3000);
     const QList<QVariant> describeArguments = responseSpy.takeFirst();
     QVERIFY(describeArguments.at(1).toBool());
-    QCOMPARE(describeArguments.at(2)
-                 .toJsonObject()
-                 .value(QStringLiteral("schema_version"))
-                 .toString(),
-             QStringLiteral("1.0.0"));
+    QCOMPARE(
+        describeArguments.at(2).toJsonObject().value(QStringLiteral("schema_version")).toString(),
+        QStringLiteral("1.0.0"));
 
     const QJsonObject inspectorCommit{
         {QStringLiteral("project_id"), QStringLiteral("project.1")},
@@ -231,51 +208,41 @@ void ProtocolTests::serviceProcessAuthenticatesAndSupportsLifecycle() {
                                 {QStringLiteral("value"), 13.8},
                                 {QStringLiteral("display_unit"), QStringLiteral("kV")}}}},
     };
-    const QString commitId = process.client()->sendRequest(
-        generated::Method::InspectorCommit, inspectorCommit);
+    const QString commitId =
+        process.client()->sendRequest(generated::Method::InspectorCommit, inspectorCommit);
     QVERIFY(!commitId.isEmpty());
     QTRY_COMPARE_WITH_TIMEOUT(responseSpy.count(), 1, 3000);
     const QList<QVariant> commitArguments = responseSpy.takeFirst();
     QVERIFY(commitArguments.at(1).toBool());
-    QCOMPARE(commitArguments.at(2)
-                 .toJsonObject()
-                 .value(QStringLiteral("revision"))
-                 .toString(),
+    QCOMPARE(commitArguments.at(2).toJsonObject().value(QStringLiteral("revision")).toString(),
              QStringLiteral("8"));
 
-    QSignalSpy detailsSpy{
-        process.client(),
-        &aimora::studio::protocol::ServiceClient::responseFailureDetailsReceived
-    };
-    const QString conflictId = process.client()->sendRequest(
-        generated::Method::InspectorCommit, inspectorCommit);
+    QSignalSpy detailsSpy{process.client(),
+                          &aimora::studio::protocol::ServiceClient::responseFailureDetailsReceived};
+    const QString conflictId =
+        process.client()->sendRequest(generated::Method::InspectorCommit, inspectorCommit);
     QVERIFY(!conflictId.isEmpty());
     QTRY_COMPARE_WITH_TIMEOUT(responseSpy.count(), 1, 3000);
     const QList<QVariant> conflictArguments = responseSpy.takeFirst();
     QVERIFY(!conflictArguments.at(1).toBool());
     QCOMPARE(conflictArguments.at(3).toString(), QStringLiteral("REVISION_CONFLICT"));
     QVERIFY(!detailsSpy.isEmpty());
-    QCOMPARE(detailsSpy.takeLast().at(1)
-                 .toJsonObject()
-                 .value(QStringLiteral("revision"))
-                 .toString(),
-             QStringLiteral("8"));
+    QCOMPARE(
+        detailsSpy.takeLast().at(1).toJsonObject().value(QStringLiteral("revision")).toString(),
+        QStringLiteral("8"));
 
     const QString workerId = process.client()->sendRequest(generated::Method::WorkerStart);
     QVERIFY(!workerId.isEmpty());
     QTRY_COMPARE_WITH_TIMEOUT(responseSpy.count(), 1, 3000);
     QVERIFY(responseSpy.takeFirst().at(1).toBool());
 
-    QSignalSpy binarySpy{
-        process.client(),
-        &aimora::studio::protocol::ServiceClient::binaryPayloadReceived
-    };
-    const QString windowId = process.client()->sendRequest(
-        generated::Method::ResultWindow,
-        {{QStringLiteral("artifact_id"), QStringLiteral("test")},
-         {QStringLiteral("offset"), 0},
-         {QStringLiteral("length"), 6}}
-    );
+    QSignalSpy binarySpy{process.client(),
+                         &aimora::studio::protocol::ServiceClient::binaryPayloadReceived};
+    const QString windowId =
+        process.client()->sendRequest(generated::Method::ResultWindow,
+                                      {{QStringLiteral("artifact_id"), QStringLiteral("test")},
+                                       {QStringLiteral("offset"), 0},
+                                       {QStringLiteral("length"), 6}});
     QVERIFY(!windowId.isEmpty());
     QTRY_COMPARE_WITH_TIMEOUT(binarySpy.count(), 1, 3000);
     QCOMPARE(binarySpy.takeFirst().at(1).toByteArray(), QByteArrayLiteral("AIMORA"));
@@ -344,10 +311,11 @@ void ProtocolTests::serviceProcessRecoversAfterCrash() {
     const QString crashMarker = recoveryState.filePath(QStringLiteral("crashed-once"));
     ServiceLaunchConfiguration configuration{
         .program = mockService,
-        .programArguments = {
-            QStringLiteral("--mock-crash-once-file"),
-            crashMarker,
-        },
+        .programArguments =
+            {
+                QStringLiteral("--mock-crash-once-file"),
+                crashMarker,
+            },
         .allowedRoots = {allowedRoot.path()},
         .workerProgram = {},
         .workerArguments = {},
@@ -365,9 +333,7 @@ void ProtocolTests::serviceProcessRecoversAfterCrash() {
     QCOMPARE(readySpy.count(), 1);
 
     const QString crashingPing = process.client()->sendRequest(
-        generated::Method::ServicePing,
-        {{QStringLiteral("nonce"), QStringLiteral("crash-once")}}
-    );
+        generated::Method::ServicePing, {{QStringLiteral("nonce"), QStringLiteral("crash-once")}});
     QVERIFY(!crashingPing.isEmpty());
     QTRY_COMPARE_WITH_TIMEOUT(restartSpy.count(), 1, 5000);
     QTRY_COMPARE_WITH_TIMEOUT(readySpy.count(), 2, 5000);
@@ -376,23 +342,17 @@ void ProtocolTests::serviceProcessRecoversAfterCrash() {
     QCOMPARE(failureSpy.count(), 0);
     QVERIFY(QFile::exists(crashMarker));
 
-    QSignalSpy responseSpy{
-        process.client(),
-        &aimora::studio::protocol::ServiceClient::responseReceived
-    };
+    QSignalSpy responseSpy{process.client(),
+                           &aimora::studio::protocol::ServiceClient::responseReceived};
     const QString recoveredPing = process.client()->sendRequest(
-        generated::Method::ServicePing,
-        {{QStringLiteral("nonce"), QStringLiteral("recovered")}}
-    );
+        generated::Method::ServicePing, {{QStringLiteral("nonce"), QStringLiteral("recovered")}});
     QVERIFY(!recoveredPing.isEmpty());
     QTRY_COMPARE_WITH_TIMEOUT(responseSpy.count(), 1, 3000);
     const QList<QVariant> responseArguments = responseSpy.takeFirst();
     QCOMPARE(responseArguments.at(0).toString(), recoveredPing);
     QVERIFY(responseArguments.at(1).toBool());
-    QCOMPARE(
-        responseArguments.at(2).toJsonObject().value(QStringLiteral("nonce")).toString(),
-        QStringLiteral("recovered")
-    );
+    QCOMPARE(responseArguments.at(2).toJsonObject().value(QStringLiteral("nonce")).toString(),
+             QStringLiteral("recovered"));
 
     process.stop();
     QTRY_COMPARE_WITH_TIMEOUT(process.state(), ServiceProcess::State::Stopped, 5000);
