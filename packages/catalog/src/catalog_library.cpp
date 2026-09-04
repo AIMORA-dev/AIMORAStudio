@@ -14,6 +14,7 @@
 #include <QListView>
 #include <QMimeData>
 #include <QPushButton>
+#include <QResource>
 #include <QSet>
 #include <QSignalBlocker>
 #include <QSortFilterProxyModel>
@@ -23,6 +24,10 @@
 
 #include <algorithm>
 #include <utility>
+
+static void initializeEquipmentCatalogResource() {
+    Q_INIT_RESOURCE(equipment_catalog);
+}
 
 namespace aimora::studio::catalog {
 namespace {
@@ -392,6 +397,7 @@ CatalogDocument::fromJson(const QJsonObject& object, QString* errorMessage) {
 }
 
 QJsonObject bundledCatalogDocument(QString* errorMessage) {
+    initializeEquipmentCatalogResource();
     QFile resource{QStringLiteral(":/aimora/catalog/equipment_catalog.json")};
     if(!resource.open(QIODevice::ReadOnly)) {
         setError(errorMessage, QStringLiteral("Bundled equipment catalog is unavailable."));
