@@ -40,6 +40,33 @@ if(AIMORA_ENABLE_CLANG_TIDY)
     set_property(TARGET aimora_studio_shell_tests PROPERTY CXX_CLANG_TIDY "")
 endif()
 
+add_executable(aimora_studio_canvas_tests canvas_tests.cpp)
+target_link_libraries(
+    aimora_studio_canvas_tests
+    PRIVATE
+        AIMORA::StudioCanvas
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+)
+aimora_target_defaults(aimora_studio_canvas_tests)
+
+add_executable(aimora_studio_renderer_tests renderer_tests.cpp)
+target_link_libraries(
+    aimora_studio_renderer_tests
+    PRIVATE
+        AIMORA::StudioRenderer
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+)
+aimora_target_defaults(aimora_studio_renderer_tests)
+
+if(AIMORA_ENABLE_CLANG_TIDY)
+    set_property(TARGET aimora_studio_canvas_tests PROPERTY CXX_CLANG_TIDY "")
+    set_property(TARGET aimora_studio_renderer_tests PROPERTY CXX_CLANG_TIDY "")
+endif()
+
 add_executable(aimora_studio_mock_service mock_service.cpp)
 target_link_libraries(
     aimora_studio_mock_service
@@ -69,9 +96,11 @@ endif()
 
 add_test(NAME aimora.foundation COMMAND aimora_studio_foundation_tests)
 add_test(NAME aimora.shell COMMAND aimora_studio_shell_tests)
+add_test(NAME aimora.canvas COMMAND aimora_studio_canvas_tests)
+add_test(NAME aimora.renderer COMMAND aimora_studio_renderer_tests)
 add_test(NAME aimora.protocol COMMAND aimora_studio_protocol_tests)
 set_tests_properties(
-    aimora.shell
+    aimora.shell aimora.canvas aimora.renderer
     PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )

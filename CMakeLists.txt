@@ -40,6 +40,8 @@ find_package(
         Concurrent
 )
 
+find_package(Qt6 ${AIMORA_QT_VERSION} EXACT REQUIRED COMPONENTS ShaderTools)
+
 if(BUILD_TESTING)
     find_package(Qt6 ${AIMORA_QT_VERSION} EXACT REQUIRED COMPONENTS Test)
 endif()
@@ -63,6 +65,7 @@ configure_file(
 add_subdirectory(packages/core)
 add_subdirectory(packages/protocol)
 add_subdirectory(packages/canvas)
+add_subdirectory(packages/renderer)
 add_subdirectory(packages/inspector)
 add_subdirectory(packages/commands)
 add_subdirectory(packages/themes)

@@ -3,6 +3,7 @@
 
 #include "aimora/studio/commands/command_registry.hpp"
 #include "aimora/studio/inspector/panel_state.hpp"
+#include "aimora/studio/renderer/scene_surface.hpp"
 #include "aimora/studio/themes/theme_system.hpp"
 
 #include <QDockWidget>
@@ -14,12 +15,12 @@
 #include <QStringList>
 #include <QStringView>
 #include <QWidget>
+#include <memory>
 
 class QAction;
 class QActionGroup;
 class QCloseEvent;
 class QMenu;
-class QPaintEvent;
 
 namespace aimora::studio::shell {
 
@@ -30,28 +31,23 @@ enum class WorkspaceRestoreStatus {
 };
 
 class DrawingWorkspace final : public QWidget {
-public:
+  public:
     explicit DrawingWorkspace(QWidget* parent = nullptr);
 
+    void setScene(std::shared_ptr<const canvas::RetainedScene> scene);
+    [[nodiscard]] renderer::SceneSurface* sceneSurface() const noexcept;
     void setThemeTokens(const themes::ThemeTokens& tokens);
     [[nodiscard]] const themes::ThemeTokens& themeTokens() const noexcept;
     [[nodiscard]] QSize sizeHint() const override;
 
-protected:
-    void paintEvent(QPaintEvent* event) override;
-
-private:
+  private:
     themes::ThemeTokens tokens_{themes::lightThemeTokens()};
+    renderer::SceneSurface* sceneSurface_{nullptr};
 };
 
 class StudioDockWidget final : public QDockWidget {
-public:
-    StudioDockWidget(
-        QString panelId,
-        QString title,
-        QWidget* content,
-        QWidget* parent = nullptr
-    );
+  public:
+    StudioDockWidget(QString panelId, QString title, QWidget* content, QWidget* parent = nullptr);
 
     [[nodiscard]] QString panelId() const;
     [[nodiscard]] bool isPinned() const noexcept;
@@ -60,14 +56,14 @@ public:
 
     void setPinned(bool pinned);
 
-private:
+  private:
     QString panelId_;
     bool pinned_{false};
     QAction* pinAction_{nullptr};
 };
 
 class WorkspaceSettings final {
-public:
+  public:
     static constexpr int stateVersion = 1;
 
     explicit WorkspaceSettings(QSettings& settings) noexcept;
@@ -81,17 +77,15 @@ public:
     [[nodiscard]] bool panelPinned(QStringView panelId) const;
     void savePanelPinned(QStringView panelId, bool pinned);
 
-private:
+  private:
     QSettings& settings_;
 };
 
 class StudioMainWindow final : public QMainWindow {
-public:
-    StudioMainWindow(
-        themes::ThemeController& themeController,
-        QSettings& settings,
-        QWidget* parent = nullptr
-    );
+  public:
+    StudioMainWindow(themes::ThemeController& themeController,
+                     QSettings& settings,
+                     QWidget* parent = nullptr);
     ~StudioMainWindow() override = default;
 
     [[nodiscard]] DrawingWorkspace* drawingWorkspace() const noexcept;
@@ -105,10 +99,10 @@ public:
     void saveWorkspace();
     void resetWorkspace();
 
-protected:
+  protected:
     void closeEvent(QCloseEvent* event) override;
 
-private:
+  private:
     void configureWindow();
     void createMenus();
     void createPanels();
@@ -119,22 +113,11 @@ private:
     void showAboutDialog();
 
     [[nodiscard]] QMenu* menu(QStringView menuId) const;
-    [[nodiscard]] QAction* registerAction(
-        QString id,
-        QString label,
-        QString category,
-        QKeySequence shortcut = {}
-    );
-    [[nodiscard]] StudioDockWidget* addPanel(
-        QString panelId,
-        QString title,
-        Qt::DockWidgetArea defaultArea,
-        QWidget* content
-    );
-    [[nodiscard]] QWidget* createInformationPanel(
-        QString title,
-        QString description
-    ) const;
+    [[nodiscard]] QAction*
+    registerAction(QString id, QString label, QString category, QKeySequence shortcut = {});
+    [[nodiscard]] StudioDockWidget*
+    addPanel(QString panelId, QString title, Qt::DockWidgetArea defaultArea, QWidget* content);
+    [[nodiscard]] QWidget* createInformationPanel(QString title, QString description) const;
     [[nodiscard]] QWidget* createCommandPanel() const;
     void addUnavailableAction(QMenu& target, QString explanation);
 

@@ -46,6 +46,7 @@ jobs:
         with:
           version: ${{ env.AIMORA_QT_VERSION }}
           target: desktop
+          modules: qtshadertools
           cache: true
           setup-python: true
           aqtversion: "==3.3.*"
@@ -81,6 +82,7 @@ jobs:
         with:
           version: ${{ env.AIMORA_QT_VERSION }}
           target: desktop
+          modules: qtshadertools
           cache: true
           setup-python: true
           aqtversion: "==3.3.*"
@@ -116,6 +118,7 @@ jobs:
         with:
           version: ${{ env.AIMORA_QT_VERSION }}
           target: desktop
+          modules: qtshadertools
           cache: true
           setup-python: true
           aqtversion: "==3.3.*"

@@ -26,6 +26,7 @@ target_link_libraries(
         AIMORA::StudioCore
         AIMORA::StudioCommands
         AIMORA::StudioInspector
+        AIMORA::StudioRenderer
         AIMORA::StudioThemes
         Qt6::Core
         Qt6::Gui
