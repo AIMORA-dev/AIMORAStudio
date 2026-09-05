@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+#include <algorithm>
+#include <cmath>
 #include "aimora/studio/shell/studio_shell.hpp"
 
 #include <QDragEnterEvent>
@@ -313,6 +315,8 @@ void DrawingWorkspace::setThemeTokens(const themes::ThemeTokens& tokens) {
         .selection = tokens_.selection,
         .diagnostic = tokens_.error,
         .text = tokens_.textPrimary,
+        .gridVisible = gridVisible(),
+        .gridSpacing = snapSettings_.gridSpacing,
     });
     interactionSurface_->update();
 }
@@ -350,6 +354,40 @@ void DrawingWorkspace::setSemanticItemIds(QHash<quint64, QString> semanticItemId
 
 void DrawingWorkspace::setCanonicalEditHandler(CanonicalEditHandler handler) {
     canonicalEditHandler_ = std::move(handler);
+    lastCompletedCommand_.clear();
+    commandSession_.cancel();
+    submittedCommand_.reset();
+    submittedCommandId_.clear();
+}
+
+void DrawingWorkspace::setCanonicalEditConfirmationRequired(const bool required) {
+    canonicalEditConfirmationRequired_ = required;
+}
+
+void DrawingWorkspace::resolveCanonicalEdit(const bool accepted) {
+    if (!submittedCommand_.has_value()) {
+        return;
+    }
+    if (accepted) {
+        lastCompletedCommand_ = submittedCommandId_;
+    } else {
+        commandSession_ = *submittedCommand_;
+    }
+    submittedCommand_.reset();
+    submittedCommandId_.clear();
+    interactionSurface_->update();
+}
+
+void DrawingWorkspace::setCommandInputHandler(std::function<void(const QString&)> handler) {
+    commandInputHandler_ = std::move(handler);
+}
+
+bool DrawingWorkspace::setCustomCommandAliases(const QHash<QString, QString>& aliases) {
+    return commandSession_.setCustomAliases(aliases);
+}
+
+QHash<QString, QString> DrawingWorkspace::commandAliases() const {
+    return commandSession_.commandAliases();
 }
 
 void DrawingWorkspace::setInspectionSelectionHandler(InspectionSelectionHandler handler) {
@@ -357,16 +395,143 @@ void DrawingWorkspace::setInspectionSelectionHandler(InspectionSelectionHandler 
 }
 
 bool DrawingWorkspace::executeCommandText(QStringView input) {
+    if (submittedCommand_.has_value()) {
+        return false;
+    }
     const QString normalized = input.toString().trimmed().toLower();
-    if (normalized.isEmpty()) {
-        if (!commandSession_.isActive()) {
+    const bool historyInput = normalized == QStringLiteral("undo") || normalized == QStringLiteral("redo") ||
+        normalized == QStringLiteral("edit.undo") || normalized == QStringLiteral("edit.redo");
+    if (historyInput && !commandSession_.isActive()) {
+        if (zoomOptionPending_ || !canonicalEditHandler_ ||
+            commandSession_.begin(QStringView{normalized}) != commands::CommandStartResult::Started) {
             return false;
         }
-        completeCommand();
+        return completeCommand();
+    }
+    if (normalized.isEmpty() && !commandSession_.isActive() && !zoomOptionPending_ &&
+        (lastCompletedCommand_ == QStringLiteral("edit.undo") || lastCompletedCommand_ == QStringLiteral("edit.redo"))) {
+        return executeCommandText(QStringView{lastCompletedCommand_});
+    }
+    if ((normalized == QStringLiteral("edit.undo") || normalized == QStringLiteral("edit.redo")) &&
+        (commandSession_.isActive() || zoomOptionPending_)) {
+        return false;
+    }
+    if (zoomOptionPending_ && normalized == QStringLiteral("cancel")) {
+        zoomOptionPending_ = false;
         return true;
+    }
+    if (zoomOptionPending_ && normalized != QStringLiteral("cancel")) {
+        if (normalized.isEmpty()) {
+            zoomOptionPending_ = false;
+            return true;
+        }
+        if (normalized == QStringLiteral("e") || normalized == QStringLiteral("extents")) {
+            const bool fitted = zoomToExtents();
+            zoomOptionPending_ = !fitted;
+            return fitted;
+        }
+        if (normalized == QStringLiteral("p") || normalized == QStringLiteral("previous")) {
+            if (zoomHistory_.isEmpty()) {
+                return false;
+            }
+            precisionViewport_ = zoomHistory_.takeLast();
+            zoomOptionPending_ = false;
+            applyViewport();
+            if (pointerAvailable_) {
+                updatePointer(pointerPixel_);
+            }
+            interactionSurface_->update();
+            return true;
+        }
+        if (normalized == QStringLiteral("o") || normalized == QStringLiteral("object")) {
+            const bool fitted = zoomToSelection();
+            zoomOptionPending_ = !fitted;
+            return fitted;
+        }
+        if (normalized.endsWith(QLatin1Char('x'))) {
+            bool converted = false;
+            const qreal factor = normalized.chopped(1).toDouble(&converted);
+            const qreal requestedZoom = precisionViewport_.zoom * factor;
+            if (!converted || !std::isfinite(factor) || factor <= 0.0 ||
+                !std::isfinite(requestedZoom) ||
+                !precisionViewport_.isValid(QSizeF{interactionSurface_->size()})) {
+                return false;
+            }
+            const auto previous = precisionViewport_;
+            precisionViewport_.zoom = std::clamp(requestedZoom,
+                precisionViewport_.minimumZoom, precisionViewport_.maximumZoom);
+            rememberZoomView(previous);
+            zoomOptionPending_ = false;
+            applyViewport();
+            interactionSurface_->update();
+            return true;
+        }
+        return false;
+    }
+    if (normalized == QStringLiteral("z") || normalized == QStringLiteral("zoom")) {
+        zoomOptionPending_ = true;
+        return true;
+    }
+    if (normalized == QStringLiteral("ze") || normalized == QStringLiteral("zoomextents")) {
+        return zoomToExtents();
+    }
+    if (normalized.isEmpty()) {
+        if (!commandSession_.isActive()) {
+            if (!canonicalEditHandler_ || lastCompletedCommand_.isEmpty()) {
+                return false;
+            }
+            const bool started = commandSession_.begin(QStringView{lastCompletedCommand_}) ==
+                                 commands::CommandStartResult::Started;
+            interactionSurface_->update();
+            return started;
+        }
+        return completeCommand();
+    }
+    if (normalized == QStringLiteral("cancel")) {
+        zoomOptionPending_ = false;
+        commandSession_.cancel();
+        marqueeActive_ = false;
+        panning_ = false;
+        spacePanEnabled_ = false;
+        spacePanUsed_ = false;
+        selection_.clear();
+        if (inspectionSelectionHandler_) {
+            inspectionSelectionHandler_({}, false);
+        }
+        interactionSurface_->setCursor(Qt::CrossCursor);
+        interactionSurface_->update();
+        return true;
+    }
+    if (commandSession_.activeCommandId() == QStringLiteral("draw.polyline") ||
+        commandSession_.activeCommandId() == QStringLiteral("draw.line") ||
+        commandSession_.activeCommandId() == QStringLiteral("draw.arc")) {
+        if (normalized == QStringLiteral("u") || normalized == QStringLiteral("undo")) {
+            const bool removed = commandSession_.undoPathVertex();
+            if (removed && pointerAvailable_) {
+                updatePointer(pointerPixel_);
+            }
+            interactionSurface_->update();
+            return removed;
+        }
+        if (normalized == QStringLiteral("c") || normalized == QStringLiteral("close")) {
+            const auto openPath = commandSession_;
+            if (!commandSession_.closePath()) {
+                return false;
+            }
+            if (!completeCommand()) {
+                commandSession_ = openPath;
+                interactionSurface_->update();
+                return false;
+            }
+            return true;
+        }
     }
     if (normalized == QStringLiteral("grid")) {
         setGridSnapEnabled(!gridSnapEnabled());
+        return true;
+    }
+    if (normalized == QStringLiteral("gridview")) {
+        setGridVisible(!gridVisible());
         return true;
     }
     if (normalized == QStringLiteral("ortho")) {
@@ -378,27 +543,47 @@ bool DrawingWorkspace::executeCommandText(QStringView input) {
         return true;
     }
     if (normalized == QStringLiteral("snap")) {
-        snapSettings_.objectEnabled = !snapSettings_.objectEnabled;
-        interactionSurface_->update();
+        setObjectSnapEnabled(!objectSnapEnabled());
         return true;
+    }
+    if (commandSession_.activeCommandId() == QStringLiteral("draw.circle")) {
+        const auto centerSelection = commandSession_;
+        if (commandSession_.acceptCircleRadius(QStringView{normalized})) {
+            if (!completeCommand()) {
+                commandSession_ = centerSelection;
+                interactionSurface_->update();
+                return false;
+            }
+            return true;
+        }
+    }
+    if (commandSession_.activeCommandId() == QStringLiteral("modify.scale")) {
+        const auto pivotSelection = commandSession_;
+        if (commandSession_.acceptScaleFactor(QStringView{normalized})) {
+            if (!completeCommand()) {
+                commandSession_ = pivotSelection;
+                interactionSurface_->update();
+                return false;
+            }
+            return true;
+        }
     }
     if (normalized == QStringLiteral("select")) {
         commandSession_.cancel();
         interactionSurface_->update();
         return true;
     }
-    if (normalized == QStringLiteral("pan") || normalized == QStringLiteral("zoom")) {
+    if (normalized == QStringLiteral("selectall")) {
+        return selectAllDrawingItems();
+    }
+    if (normalized == QStringLiteral("pan")) {
         commandSession_.cancel();
         interactionSurface_->setFocus();
         return true;
     }
     if (commandSession_.isActive()) {
         const QPointF anchor = commandSession_.anchor().value_or(pointerSnap_.scenePoint);
-        const auto coordinate = commands::CoordinateInterpreter::parse(normalized, anchor);
-        if (!coordinate.has_value()) {
-            return false;
-        }
-        const bool accepted = commandSession_.acceptPoint(coordinate->point);
+        const bool accepted = commandSession_.acceptCoordinateInput(QStringView{normalized}, anchor);
         interactionSurface_->update();
         return accepted;
     }
@@ -410,11 +595,114 @@ bool DrawingWorkspace::executeCommandText(QStringView input) {
     return started == commands::CommandStartResult::Started;
 }
 
+bool DrawingWorkspace::selectAllDrawingItems() {
+    const auto scene = sceneSurface_->scene();
+    if (scene == nullptr) {
+        return false;
+    }
+    QVector<quint64> ids = scene->segments().ids;
+    ids.reserve(ids.size() + scene->symbolInstances().size() + scene->texts().size());
+    for (const auto& instance : scene->symbolInstances()) {
+        ids.append(instance.id);
+    }
+    for (const auto& text : scene->texts()) {
+        ids.append(text.id);
+    }
+    selection_.replaceSelection(ids);
+    marqueeActive_ = false;
+    if (inspectionSelectionHandler_) {
+        inspectionSelectionHandler_(selection_.selectedIds(), false);
+    }
+    interactionSurface_->update();
+    return true;
+}
+
+void DrawingWorkspace::rememberZoomView(const commands::PrecisionViewport& previous) {
+    if (previous.center == precisionViewport_.center && previous.zoom == precisionViewport_.zoom) {
+        return;
+    }
+    constexpr qsizetype maximumZoomHistory = 32;
+    if (zoomHistory_.size() == maximumZoomHistory) {
+        zoomHistory_.removeFirst();
+    }
+    zoomHistory_.append(previous);
+}
+
+bool DrawingWorkspace::zoomToExtents() {
+    return zoomToDrawingBounds(false);
+}
+
+bool DrawingWorkspace::zoomToSelection() {
+    return zoomToDrawingBounds(true);
+}
+
+bool DrawingWorkspace::zoomToDrawingBounds(const bool selectedOnly) {
+    const auto scene = sceneSurface_->scene();
+    if (scene == nullptr) {
+        return false;
+    }
+    QRectF extent;
+    bool hasExtent = false;
+    const auto includeBounds = [&extent, &hasExtent](const QRectF& bounds) {
+        extent = hasExtent ? extent.united(bounds) : bounds;
+        hasExtent = true;
+    };
+    for (qsizetype index = 0; index < scene->segments().bounds.size(); ++index) {
+        if (!selectedOnly || selection_.contains(scene->segments().ids[index])) {
+            includeBounds(scene->segments().bounds[index]);
+        }
+    }
+    for (const auto& instance : scene->symbolInstances()) {
+        if (!selectedOnly || selection_.contains(instance.id)) {
+            includeBounds(instance.bounds);
+        }
+    }
+    for (const auto& text : scene->texts()) {
+        if (!selectedOnly || selection_.contains(text.id)) {
+            includeBounds(text.bounds);
+        }
+    }
+    if (!selectedOnly && !hasExtent && scene->page().has_value()) {
+        includeBounds(scene->page()->bounds);
+    }
+    const auto previous = precisionViewport_;
+    if (!hasExtent || !precisionViewport_.fitBounds(extent, interactionSurface_->size())) {
+        return false;
+    }
+    rememberZoomView(previous);
+    applyViewport();
+    if (pointerAvailable_) {
+        updatePointer(pointerPixel_);
+    }
+    return true;
+}
+
+void DrawingWorkspace::setGridVisible(const bool visible) {
+    auto palette = sceneSurface_->renderPalette();
+    if (palette.gridVisible != visible) {
+        palette.gridVisible = visible;
+        sceneSurface_->setRenderPalette(palette);
+    }
+}
+
+bool DrawingWorkspace::gridVisible() const noexcept {
+    return sceneSurface_->renderPalette().gridVisible;
+}
+
 void DrawingWorkspace::setGridSnapEnabled(const bool enabled) {
     snapSettings_.gridEnabled = enabled;
     if (pointerAvailable_) {
         updatePointer(pointerPixel_);
     }
+    interactionSurface_->update();
+}
+
+void DrawingWorkspace::setObjectSnapEnabled(const bool enabled) {
+    snapSettings_.objectEnabled = enabled;
+    if (pointerAvailable_) {
+        updatePointer(pointerPixel_);
+    }
+    interactionSurface_->update();
 }
 
 void DrawingWorkspace::setOrthoEnabled(const bool enabled) {
@@ -425,6 +713,7 @@ void DrawingWorkspace::setOrthoEnabled(const bool enabled) {
     if (pointerAvailable_) {
         updatePointer(pointerPixel_);
     }
+    interactionSurface_->update();
 }
 
 void DrawingWorkspace::setPolarEnabled(const bool enabled) {
@@ -435,10 +724,15 @@ void DrawingWorkspace::setPolarEnabled(const bool enabled) {
     if (pointerAvailable_) {
         updatePointer(pointerPixel_);
     }
+    interactionSurface_->update();
 }
 
 bool DrawingWorkspace::gridSnapEnabled() const noexcept {
     return snapSettings_.gridEnabled;
+}
+
+bool DrawingWorkspace::objectSnapEnabled() const noexcept {
+    return snapSettings_.objectEnabled;
 }
 
 bool DrawingWorkspace::orthoEnabled() const noexcept {
@@ -526,6 +820,7 @@ bool DrawingWorkspace::eventFilter(QObject* watched, QEvent* event) {
         if (mouseEvent->button() == Qt::MiddleButton ||
             (mouseEvent->button() == Qt::LeftButton && spacePanEnabled_)) {
             panning_ = true;
+            spacePanUsed_ = spacePanEnabled_;
             previousPanPixel_ = mouseEvent->position();
             interactionSurface_->setCursor(Qt::ClosedHandCursor);
             return true;
@@ -601,7 +896,9 @@ bool DrawingWorkspace::eventFilter(QObject* watched, QEvent* event) {
         const qreal wheelSteps = wheelEvent->angleDelta().y() != 0
                                      ? static_cast<qreal>(wheelEvent->angleDelta().y()) / 120.0
                                      : static_cast<qreal>(wheelEvent->pixelDelta().y()) / 120.0;
+        const auto previous = precisionViewport_;
         if (precisionViewport_.zoomAt(wheelEvent->position(), pixelExtent, wheelSteps)) {
+            rememberZoomView(previous);
             applyViewport();
             updatePointer(wheelEvent->position());
         }
@@ -610,22 +907,44 @@ bool DrawingWorkspace::eventFilter(QObject* watched, QEvent* event) {
     }
     case QEvent::KeyPress: {
         auto* keyEvent = static_cast<QKeyEvent*>(event);
+        if (keyEvent->matches(QKeySequence::SelectAll)) {
+            if (!keyEvent->isAutoRepeat()) {
+                static_cast<void>(selectAllDrawingItems());
+            }
+            return true;
+        }
+        if (keyEvent->key() == Qt::Key_Space && keyEvent->isAutoRepeat()) {
+            return true;
+        }
         if (keyEvent->key() == Qt::Key_Space && !keyEvent->isAutoRepeat()) {
             spacePanEnabled_ = true;
+            spacePanUsed_ = false;
             interactionSurface_->setCursor(Qt::OpenHandCursor);
             return true;
         }
         if (keyEvent->key() == Qt::Key_Escape) {
-            commandSession_.cancel();
-            marqueeActive_ = false;
-            interactionSurface_->update();
+            static_cast<void>(executeCommandText(QStringView{u"cancel"}));
             return true;
         }
         if (keyEvent->key() == Qt::Key_Return || keyEvent->key() == Qt::Key_Enter) {
-            completeCommand();
+            if (!keyEvent->isAutoRepeat()) {
+                static_cast<void>(executeCommandText(QStringView{}));
+            }
+            return true;
+        }
+        if (keyEvent->key() == Qt::Key_F3) {
+            if (!keyEvent->isAutoRepeat()) {
+                setObjectSnapEnabled(!objectSnapEnabled());
+            }
             return true;
         }
         if (keyEvent->key() == Qt::Key_F7) {
+            if (!keyEvent->isAutoRepeat()) {
+                setGridVisible(!gridVisible());
+            }
+            return true;
+        }
+        if (keyEvent->key() == Qt::Key_F9) {
             setGridSnapEnabled(!gridSnapEnabled());
             return true;
         }
@@ -637,14 +956,26 @@ bool DrawingWorkspace::eventFilter(QObject* watched, QEvent* event) {
             setPolarEnabled(!polarEnabled());
             return true;
         }
+        if (commandInputHandler_ && !keyEvent->text().isEmpty() &&
+            !keyEvent->modifiers().testFlag(Qt::ControlModifier) &&
+            !keyEvent->modifiers().testFlag(Qt::AltModifier) &&
+            !keyEvent->modifiers().testFlag(Qt::MetaModifier) &&
+            keyEvent->text().front().isPrint()) {
+            commandInputHandler_(keyEvent->text());
+            return true;
+        }
         return false;
     }
     case QEvent::KeyRelease: {
         auto* keyEvent = static_cast<QKeyEvent*>(event);
         if (keyEvent->key() == Qt::Key_Space && !keyEvent->isAutoRepeat()) {
+            const bool repeatOrComplete = spacePanEnabled_ && !spacePanUsed_ && !panning_;
             spacePanEnabled_ = false;
             if (!panning_) {
                 interactionSurface_->setCursor(Qt::CrossCursor);
+            }
+            if (repeatOrComplete) {
+                static_cast<void>(executeCommandText(QStringView{}));
             }
             return true;
         }
@@ -688,22 +1019,37 @@ void DrawingWorkspace::applyViewport() {
     interactionSurface_->update();
 }
 
-void DrawingWorkspace::completeCommand() {
-    if (!canonicalEditHandler_) {
-        return;
+bool DrawingWorkspace::completeCommand() {
+    if (!canonicalEditHandler_ || submittedCommand_.has_value()) {
+        return false;
     }
-    auto request = commandSession_.complete(selection_.selectedIds());
+    const auto previousSession = commandSession_;
+    const bool historyCommand = commandSession_.activeCommandId() == QStringLiteral("edit.undo") ||
+        commandSession_.activeCommandId() == QStringLiteral("edit.redo");
+    auto request = commandSession_.complete(historyCommand ? QVector<quint64>{} : selection_.selectedIds());
     if (!request.has_value()) {
-        return;
+        return false;
     }
     for (const quint64 itemId : request->selectedItemIds) {
         const QString semanticId = semanticItemIds_.value(itemId);
-        if (!semanticId.isEmpty() && !request->semanticIds.contains(semanticId)) {
+        if (!request->commandId.startsWith(QStringLiteral("draw.")) &&
+            !semanticId.isEmpty() && !request->semanticIds.contains(semanticId)) {
             request->semanticIds.append(semanticId);
         }
     }
-    static_cast<void>(dispatchCanonicalEdit(*request));
+    const bool dispatched = dispatchCanonicalEdit(*request);
+    if (dispatched) {
+        if (canonicalEditConfirmationRequired_) {
+            submittedCommand_ = previousSession;
+            submittedCommandId_ = request->commandId;
+        } else {
+            lastCompletedCommand_ = request->commandId;
+        }
+    } else {
+        commandSession_ = previousSession;
+    }
     interactionSurface_->update();
+    return dispatched;
 }
 
 bool DrawingWorkspace::dispatchCanonicalEdit(const commands::CanonicalEditRequest& request) {

@@ -145,7 +145,51 @@ class MockConnection final : public QObject {
             return;
         }
 
-        if (method == QStringLiteral("service.capabilities")) {
+        if (method == QStringLiteral("project.open")) {
+            drawingOpen_ = true;
+            writeControl(success(requestId,
+                {{QStringLiteral("project_id"), QStringLiteral("project.drafting")},
+                 {QStringLiteral("display_name"), QStringLiteral("Drafting fixture")},
+                 {QStringLiteral("revision"), QString::number(drawingRevision_)},
+                 {QStringLiteral("drawing_view_id"), QStringLiteral("view.drafting")},
+                 {QStringLiteral("drawing_layer_id"), QStringLiteral("layer.drafting")},
+                 {QStringLiteral("modified"), drawingRevision_ != savedDrawingRevision_},
+                 {QStringLiteral("can_save"), true},
+                 {QStringLiteral("edit_operations"), QJsonArray{QStringLiteral("draw.line")}},
+                 {QStringLiteral("drawing_scene"), drawingScene()}}));
+        } else if (method == QStringLiteral("semantic.commit") || method == QStringLiteral("project.save")) {
+            if (!drawingOpen_ || parameters.value(QStringLiteral("project_id")).toString() != QStringLiteral("project.drafting")) {
+                writeControl(failure(requestId, QStringLiteral("RESOURCE_NOT_FOUND"), QStringLiteral("Drawing is not open.")));
+                return;
+            }
+            if (parameters.value(QStringLiteral("base_revision")).toString() != QString::number(drawingRevision_)) {
+                writeControl(failure(requestId, QStringLiteral("REVISION_CONFLICT"), QStringLiteral("Drawing revision conflict.")));
+                return;
+            }
+            if (method == QStringLiteral("project.save")) {
+                savedDrawingRevision_ = drawingRevision_;
+                writeControl(success(requestId,
+                    {{QStringLiteral("project_id"), QStringLiteral("project.drafting")},
+                     {QStringLiteral("revision"), QString::number(drawingRevision_)},
+                     {QStringLiteral("saved"), true}, {QStringLiteral("modified"), false}}));
+                return;
+            }
+            const QJsonArray points = parameters.value(QStringLiteral("points")).toArray();
+            if (parameters.value(QStringLiteral("operation")).toString() != QStringLiteral("draw.line") ||
+                points.size() != 2 || points[0] == points[1]) {
+                writeControl(failure(requestId, QStringLiteral("INVALID_REQUEST"), QStringLiteral("Fixture accepts only a two-point line.")));
+                return;
+            }
+            ++drawingRevision_;
+            drawingItems_.append(QJsonObject{
+                {QStringLiteral("item_id"), QString::number(drawingRevision_)},
+                {QStringLiteral("owner_id"), QStringLiteral("drawing.line.%1").arg(drawingRevision_)},
+                {QStringLiteral("kind"), QStringLiteral("line")}, {QStringLiteral("points"), points}});
+            writeControl(success(requestId,
+                {{QStringLiteral("status"), QStringLiteral("accepted")},
+                 {QStringLiteral("revision"), QString::number(drawingRevision_)},
+                 {QStringLiteral("drawing_scene"), drawingScene()}}));
+        } else if (method == QStringLiteral("service.capabilities")) {
             writeControl(success(requestId,
                                  {
                                      {QStringLiteral("protocol_version"), protocolVersion()},
@@ -292,6 +336,11 @@ class MockConnection final : public QObject {
         }
     }
 
+    QJsonObject drawingScene() const {
+        return {{QStringLiteral("items"), drawingItems_},
+                {QStringLiteral("unsupported_owner_ids"), QJsonArray{}}};
+    }
+
     void writeControl(const QJsonObject& object) {
         socket_->write(encodeControlMessage(object, limits_));
         socket_->flush();
@@ -307,6 +356,10 @@ class MockConnection final : public QObject {
     bool authenticated_{false};
     bool workerRunning_{false};
     quint64 inspectionRevision_{7};
+    bool drawingOpen_{false};
+    quint64 drawingRevision_{1};
+    quint64 savedDrawingRevision_{1};
+    QJsonArray drawingItems_;
 };
 
 } // namespace

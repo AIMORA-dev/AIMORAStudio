@@ -16,6 +16,25 @@ namespace {
 WorkspaceSettings::WorkspaceSettings(QSettings& settings) noexcept
     : settings_{settings} {}
 
+QHash<QString, QString> WorkspaceSettings::customCommandAliases() const {
+    const QVariantMap values = settings_.value(QStringLiteral("commands/aliases")).toMap();
+    QHash<QString, QString> result;
+    for (auto iterator = values.cbegin(); iterator != values.cend(); ++iterator) {
+        result.insert(iterator.key(), iterator.value().toString());
+    }
+    return result;
+}
+
+bool WorkspaceSettings::saveCustomCommandAliases(const QHash<QString, QString>& aliases) {
+    QVariantMap values;
+    for (auto iterator = aliases.cbegin(); iterator != aliases.cend(); ++iterator) {
+        values.insert(iterator.key(), iterator.value());
+    }
+    settings_.setValue(QStringLiteral("commands/aliases"), values);
+    settings_.sync();
+    return settings_.status() == QSettings::NoError;
+}
+
 bool WorkspaceSettings::hasSavedLayout() const {
     return settings_.contains(QStringLiteral("workspace/geometry"))
         && settings_.contains(QStringLiteral("workspace/mainWindowState"));

@@ -11,13 +11,13 @@
 namespace aimora::studio::protocol::generated {
 
 inline constexpr std::string_view protocolVersion{
-    "1.2"
+    "1.3"
 };
 inline constexpr std::string_view serviceVersion{
-    "0.3.0"
+    "0.4.0"
 };
 inline constexpr std::string_view schemaSha256{
-    "56a1d3fb974581692dfb490408db39cc02ee2ff9aaef139e0334f2484c6cff36"
+    "0a78c31060a493e42879a2260e54d2532eb2ed6d1b7d4793cb33a2d3507b7881"
 };
 inline constexpr std::string_view frameMagic{
     "AMR1"
@@ -27,12 +27,14 @@ inline constexpr unsigned char controlFrameKind = 1;
 inline constexpr unsigned char binaryFrameKind = 2;
 
 enum class Method {
+    ProjectCreate,
     ServiceHello,
     ServiceCapabilities,
     ServicePing,
     ServiceShutdown,
     ProjectOpen,
     ProjectDescribe,
+    ProjectSave,
     ProjectClose,
     InspectorDescribe,
     InspectorCommit,
@@ -50,11 +52,13 @@ enum class Method {
 [[nodiscard]] QString methodName(Method method);
 [[nodiscard]] std::optional<Method> parseMethod(QStringView value);
 
-inline constexpr std::array<std::string_view, 12> capabilities{
+inline constexpr std::array<std::string_view, 14> capabilities{
     "artifact.reference",
     "inspector.schema",
     "inspector.transaction",
+    "project.create",
     "project.reference",
+    "project.save",
     "request.cancel",
     "result.binary-window",
     "semantic.transaction",
@@ -65,7 +69,9 @@ inline constexpr std::array<std::string_view, 12> capabilities{
     "worker.lifecycle",
 };
 
-inline constexpr std::array<std::string_view, 20> errorCodes{
+inline constexpr std::array<std::string_view, 22> errorCodes{
+    "PROJECT_ALREADY_EXISTS",
+    "PROJECT_CREATE_FAILED",
     "AUTHENTICATION_REQUIRED",
     "AUTHENTICATION_FAILED",
     "PROTOCOL_VERSION_UNSUPPORTED",

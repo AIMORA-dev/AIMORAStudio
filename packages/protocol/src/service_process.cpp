@@ -150,16 +150,16 @@ void ServiceProcess::start() {
     process_->setProgram(configuration_.program);
     process_->setArguments(launchArguments());
     process_->setProcessChannelMode(QProcess::SeparateChannels);
-    process_->start(QIODevice::ReadOnly);
     startupTimer_->start(configuration_.startupTimeoutMs);
+    process_->start(QIODevice::ReadOnly);
 }
 
 void ServiceProcess::stop() {
+    stopRequested_ = true;
+    explicitRestartRequested_ = false;
     if(state_ == State::Stopped) {
         return;
     }
-    stopRequested_ = true;
-    explicitRestartRequested_ = false;
     setState(State::Stopping);
     requestGracefulShutdown();
 }
@@ -276,6 +276,9 @@ void ServiceProcess::connectProcessSignals() {
     );
     connect(process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if(error == QProcess::FailedToStart) {
+            startupTimer_->stop();
+            shutdownTimer_->stop();
+            cleanupSession();
             fail(
                 QStringLiteral("SERVICE_PROCESS_FAILED"),
                 QStringLiteral("The Julia service process could not start.")
@@ -291,16 +294,42 @@ void ServiceProcess::connectProcessSignals() {
 }
 
 void ServiceProcess::processStandardOutput() {
-    stdoutBuffer_.append(process_->readAllStandardOutput());
-    while(true) {
-        const qsizetype newline = stdoutBuffer_.indexOf('\n');
-        if(newline < 0) {
+    // The ready record is a small protocol version and local endpoint, not a data channel.
+    constexpr qsizetype maximumReadyLineBytes = 65536;
+    process_->setReadChannel(QProcess::StandardOutput);
+    while(process_->bytesAvailable() > 0) {
+        const QByteArray chunk = process_->read(4096);
+        if(chunk.isEmpty()) {
             return;
         }
-        QByteArray line = stdoutBuffer_.left(newline).trimmed();
-        stdoutBuffer_.remove(0, newline + 1);
-        if(line.startsWith("AIMORA_SERVICE_READY\t")) {
-            handleReadyLine(line);
+        if(state_ != State::Starting) {
+            stdoutBuffer_.clear();
+            continue;
+        }
+        stdoutBuffer_.append(chunk);
+        while(state_ == State::Starting) {
+            const qsizetype newline = stdoutBuffer_.indexOf('\n');
+            const qsizetype lineBytes = newline < 0 ? stdoutBuffer_.size() : newline;
+            if(lineBytes > maximumReadyLineBytes) {
+                stdoutBuffer_.clear();
+                fail(
+                    QStringLiteral("SERVICE_READY_RECORD_TOO_LARGE"),
+                    QStringLiteral("The service startup output exceeded the bounded line size.")
+                );
+                forceStop();
+                return;
+            }
+            if(newline < 0) {
+                break;
+            }
+            const QByteArray line = stdoutBuffer_.left(newline).trimmed();
+            stdoutBuffer_.remove(0, newline + 1);
+            if(line.startsWith("AIMORA_SERVICE_READY\t")) {
+                handleReadyLine(line);
+            }
+        }
+        if(state_ != State::Starting) {
+            stdoutBuffer_.clear();
         }
     }
 }
@@ -418,7 +447,11 @@ void ServiceProcess::handleProcessFinished(int exitCode, QProcess::ExitStatus ex
     if(restartExplicitly) {
         stopRequested_ = false;
         setState(State::Stopped);
-        QTimer::singleShot(0, this, &ServiceProcess::start);
+        QTimer::singleShot(0, this, [this]() {
+            if(!stopRequested_) {
+                start();
+            }
+        });
         return;
     }
 
@@ -428,7 +461,11 @@ void ServiceProcess::handleProcessFinished(int exitCode, QProcess::ExitStatus ex
         ++automaticRestartCount_;
         setState(State::Stopped);
         emit restarted(automaticRestartCount_);
-        QTimer::singleShot(100, this, &ServiceProcess::start);
+        QTimer::singleShot(100, this, [this]() {
+            if(!stopRequested_) {
+                start();
+            }
+        });
         return;
     }
 
@@ -449,9 +486,13 @@ void ServiceProcess::handleProcessFinished(int exitCode, QProcess::ExitStatus ex
 }
 
 void ServiceProcess::cleanupSession() {
-    QFile::remove(tokenFilePath_);
+    if(!tokenFilePath_.isEmpty()) {
+        QFile::remove(tokenFilePath_);
+    }
 #ifndef Q_OS_WIN
-    QFile::remove(endpoint_);
+    if(!endpoint_.isEmpty()) {
+        QFile::remove(endpoint_);
+    }
 #endif
     tokenFilePath_.clear();
     endpoint_.clear();

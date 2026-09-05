@@ -6,6 +6,8 @@ namespace aimora::studio::protocol::generated {
 
 QString methodName(Method method) {
     switch(method) {
+    case Method::ProjectCreate:
+        return QStringLiteral("project.create");
     case Method::ServiceHello:
         return QStringLiteral("service.hello");
     case Method::ServiceCapabilities:
@@ -18,6 +20,8 @@ QString methodName(Method method) {
         return QStringLiteral("project.open");
     case Method::ProjectDescribe:
         return QStringLiteral("project.describe");
+    case Method::ProjectSave:
+        return QStringLiteral("project.save");
     case Method::ProjectClose:
         return QStringLiteral("project.close");
     case Method::InspectorDescribe:
@@ -47,6 +51,9 @@ QString methodName(Method method) {
 }
 
 std::optional<Method> parseMethod(QStringView value) {
+    if(value == QStringView{u"project.create"}) {
+        return Method::ProjectCreate;
+    }
     if(value == QStringView{u"service.hello"}) {
         return Method::ServiceHello;
     }
@@ -64,6 +71,9 @@ std::optional<Method> parseMethod(QStringView value) {
     }
     if(value == QStringView{u"project.describe"}) {
         return Method::ProjectDescribe;
+    }
+    if(value == QStringView{u"project.save"}) {
+        return Method::ProjectSave;
     }
     if(value == QStringView{u"project.close"}) {
         return Method::ProjectClose;

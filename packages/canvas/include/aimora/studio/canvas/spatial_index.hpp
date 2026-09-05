@@ -34,6 +34,7 @@ class SceneSpatialIndex final {
     [[nodiscard]] bool isValid() const noexcept;
     [[nodiscard]] qsizetype recordCount() const noexcept;
     [[nodiscard]] qsizetype nodeCount() const noexcept;
+    [[nodiscard]] qsizetype estimatedBytes() const noexcept;
     [[nodiscard]] QVector<SpatialRecord> query(const QRectF& area) const;
     [[nodiscard]] QVector<SceneItemId> hitTest(const QPointF& point, qreal tolerance) const;
 

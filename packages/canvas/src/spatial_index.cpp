@@ -10,6 +10,12 @@ namespace {
 
 constexpr qsizetype leafCapacity = 8;
 
+[[nodiscard]] bool finiteBounds(const QRectF& bounds) noexcept {
+    return bounds.isValid() && std::isfinite(bounds.left()) && std::isfinite(bounds.top()) &&
+           std::isfinite(bounds.right()) && std::isfinite(bounds.bottom()) &&
+           std::isfinite(bounds.width()) && std::isfinite(bounds.height());
+}
+
 [[nodiscard]] QRectF
 mergedBounds(const QVector<SpatialRecord>& records, const qsizetype begin, const qsizetype end) {
     QRectF result;
@@ -24,7 +30,22 @@ mergedBounds(const QVector<SpatialRecord>& records, const qsizetype begin, const
 SceneSpatialIndex::SceneSpatialIndex(QVector<SpatialRecord> records)
     : records_{std::move(records)} {
     if (!records_.isEmpty()) {
-        nodes_.reserve((records_.size() * 2) - 1);
+        QRectF extent;
+        for (const SpatialRecord& record : records_) {
+            if (!finiteBounds(record.bounds)) {
+                return;
+            }
+            extent = extent.isValid() ? extent.united(record.bounds) : record.bounds;
+            if (!finiteBounds(extent)) {
+                return;
+            }
+        }
+        qsizetype leafSlots = 1;
+        while (records_.size() / leafSlots + (records_.size() % leafSlots != 0 ? 1 : 0) >
+               leafCapacity) {
+            leafSlots *= 2;
+        }
+        nodes_.reserve((leafSlots * 2) - 1);
         buildNode(0, records_.size(), 0);
     }
 }
@@ -82,9 +103,14 @@ qsizetype SceneSpatialIndex::nodeCount() const noexcept {
     return nodes_.size();
 }
 
+qsizetype SceneSpatialIndex::estimatedBytes() const noexcept {
+    return records_.capacity() * static_cast<qsizetype>(sizeof(SpatialRecord)) +
+           nodes_.capacity() * static_cast<qsizetype>(sizeof(Node));
+}
+
 QVector<SpatialRecord> SceneSpatialIndex::query(const QRectF& area) const {
     QVector<SpatialRecord> result;
-    if (nodes_.isEmpty() || !area.isValid()) {
+    if (nodes_.isEmpty() || !finiteBounds(area)) {
         return result;
     }
     QVector<qsizetype> stack{0};
@@ -118,7 +144,8 @@ QVector<SpatialRecord> SceneSpatialIndex::query(const QRectF& area) const {
 }
 
 QVector<SceneItemId> SceneSpatialIndex::hitTest(const QPointF& point, const qreal tolerance) const {
-    if (!std::isfinite(tolerance) || tolerance < 0.0) {
+    if (!std::isfinite(point.x()) || !std::isfinite(point.y()) ||
+        !std::isfinite(tolerance) || tolerance < 0.0) {
         return {};
     }
     const QRectF area{

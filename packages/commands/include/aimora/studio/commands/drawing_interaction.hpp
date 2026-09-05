@@ -2,6 +2,7 @@
 #pragma once
 
 #include <QHash>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QLineF>
 #include <QPointF>
@@ -49,6 +50,8 @@ struct PrecisionViewport final {
     [[nodiscard]] bool
     zoomAt(const QPointF& pixel, const QSizeF& pixelExtent, qreal wheelSteps) noexcept;
     void panBy(const QPointF& pixelDelta) noexcept;
+    [[nodiscard]] bool fitBounds(const QRectF& bounds, const QSizeF& pixelExtent,
+                                 qreal paddingPixels = 24.0) noexcept;
 };
 
 enum class SnapKind : std::uint8_t {
@@ -134,6 +137,7 @@ struct EditHandle final {
 class SelectionModel final {
   public:
     void clear() noexcept;
+    void replaceSelection(const QVector<quint64>& itemIds);
     void applyHit(const QVector<quint64>& hitIds, SelectionOperation operation);
     void applyMarquee(const QVector<SelectionRecord>& records,
                       const QRectF& area,
@@ -175,9 +179,18 @@ enum class CommandStartResult : std::uint8_t {
 class DrawingCommandSession final {
   public:
     DrawingCommandSession();
+    [[nodiscard]] bool setCustomAliases(const QHash<QString, QString>& aliases);
+    [[nodiscard]] QHash<QString, QString> commandAliases() const;
 
     [[nodiscard]] CommandStartResult begin(QStringView commandOrAlias);
     [[nodiscard]] bool acceptPoint(const QPointF& point, QString semanticId = {});
+    [[nodiscard]] bool acceptCoordinateInput(QStringView input, const QPointF& anchor);
+    [[nodiscard]] bool undoPolylineVertex();
+    [[nodiscard]] bool closePolyline();
+    [[nodiscard]] bool undoPathVertex();
+    [[nodiscard]] bool closePath();
+    [[nodiscard]] bool acceptCircleRadius(QStringView input);
+    [[nodiscard]] bool acceptScaleFactor(QStringView input);
     void updatePointer(const QPointF& point);
     [[nodiscard]] std::optional<CanonicalEditRequest>
     complete(const QVector<quint64>& selectedItemIds);
@@ -194,9 +207,12 @@ class DrawingCommandSession final {
     [[nodiscard]] QString resolveCommand(QStringView commandOrAlias) const;
 
     QHash<QString, QString> aliases_;
+    QHash<QString, QString> customAliases_;
     QString activeCommandId_;
     QVector<QPointF> points_;
     QStringList pointSemanticIds_;
+    QJsonObject attributes_;
+    QJsonArray coordinateInputs_;
     std::optional<QPointF> pointerPoint_;
     quint64 nextSerial_{1};
     quint64 completedEditCount_{0};

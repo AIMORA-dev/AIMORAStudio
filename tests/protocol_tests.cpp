@@ -48,18 +48,26 @@ class ProtocolTests final : public QObject {
 };
 
 void ProtocolTests::generatedBindingsMatchCanonicalSchema() {
-    QCOMPARE(generatedProtocolVersion(), QStringLiteral("1.2"));
+    QCOMPARE(generatedProtocolVersion(), QStringLiteral("1.3"));
     QCOMPARE(QString::fromLatin1(generated::serviceVersion.data(),
                                  static_cast<qsizetype>(generated::serviceVersion.size())),
-             QStringLiteral("0.3.0"));
+             QStringLiteral("0.4.0"));
     QCOMPARE(QString::fromLatin1(generated::schemaSha256.data(),
                                  static_cast<qsizetype>(generated::schemaSha256.size())),
-             QStringLiteral("56a1d3fb974581692dfb490408db39cc02ee2ff9aaef139e0334f2484c6cff36"));
+             QStringLiteral("0a78c31060a493e42879a2260e54d2532eb2ed6d1b7d4793cb33a2d3507b7881"));
     QCOMPARE(generated::frameHeaderBytes, 12);
     QCOMPARE(generated::methodName(generated::Method::ServiceHello),
              QStringLiteral("service.hello"));
     QCOMPARE(generated::methodName(generated::Method::InspectorCommit),
              QStringLiteral("inspector.commit"));
+    QCOMPARE(generated::methodName(generated::Method::ProjectSave), QStringLiteral("project.save"));
+    const auto save = generated::parseMethod(QStringView{u"project.save"});
+    QVERIFY(save.has_value());
+    QCOMPARE(*save, generated::Method::ProjectSave);
+    const auto create = generated::parseMethod(QStringView{u"project.create"});
+    QVERIFY(create.has_value());
+    QCOMPARE(*create, generated::Method::ProjectCreate);
+    QCOMPARE(generated::methodName(*create), QStringLiteral("project.create"));
     QVERIFY(generated::parseMethod(QStringView{u"inspector.describe"}).has_value());
     QVERIFY(generated::parseMethod(QStringView{u"result.window"}).has_value());
     QVERIFY(!generated::parseMethod(QStringView{u"private.solver"}).has_value());

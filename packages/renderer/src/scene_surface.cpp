@@ -33,7 +33,6 @@ using canvas::SegmentBuffer;
 using canvas::ViewportState;
 
 constexpr qsizetype maximumGpuVertexBytes = 256 * 1024 * 1024;
-constexpr qreal baseGridSpacing = 24.0;
 constexpr int majorGridInterval = 5;
 constexpr int maximumGridLines = 512;
 
@@ -168,11 +167,11 @@ void appendBuffer(std::vector<Vertex>& vertices,
                           viewport,
                           pixelSize);
     }
-    qreal spacing = baseGridSpacing;
+    qreal spacing = palette.gridSpacing;
     while (spacing * viewport.zoom < 12.0) {
         spacing *= majorGridInterval;
     }
-    int count = 0;
+    int count = palette.gridVisible ? 0 : maximumGridLines;
     for (qreal x = std::floor(visible.left() / spacing) * spacing;
          x <= visible.right() && count < maximumGridLines;
          x += spacing, ++count) {
@@ -185,7 +184,7 @@ void appendBuffer(std::vector<Vertex>& vertices,
                    viewport,
                    pixelSize);
     }
-    count = 0;
+    count = palette.gridVisible ? 0 : maximumGridLines;
     for (qreal y = std::floor(visible.top() / spacing) * spacing;
          y <= visible.bottom() && count < maximumGridLines;
          y += spacing, ++count) {

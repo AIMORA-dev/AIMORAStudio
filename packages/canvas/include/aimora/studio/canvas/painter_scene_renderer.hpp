@@ -18,6 +18,8 @@ struct RenderPalette final {
     QColor selection{QStringLiteral("#006f8f")};
     QColor diagnostic{QStringLiteral("#b3261e")};
     QColor text{QStringLiteral("#172126")};
+    bool gridVisible{true};
+    qreal gridSpacing{24.0};
 
     [[nodiscard]] bool isValid() const noexcept;
 };

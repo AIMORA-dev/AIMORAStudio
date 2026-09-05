@@ -3,6 +3,8 @@ add_library(
     aimora_studio_shell STATIC
     include/aimora/studio/shell/studio_shell.hpp
     src/drawing_workspace.cpp
+    src/drawing_scene_transport.cpp
+    src/command_alias_preferences.cpp
     src/studio_dock_widget.cpp
     src/studio_main_window.cpp
     src/studio_menus.cpp

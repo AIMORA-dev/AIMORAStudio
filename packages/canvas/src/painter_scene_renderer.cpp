@@ -11,7 +11,6 @@
 namespace aimora::studio::canvas {
 namespace {
 
-constexpr qreal baseGridSpacing = 24.0;
 constexpr int majorGridInterval = 5;
 constexpr int maximumGridLines = 512;
 
@@ -19,7 +18,10 @@ void drawGrid(QPainter& painter,
               const QRectF& visible,
               const qreal zoom,
               const RenderPalette& palette) {
-    qreal spacing = baseGridSpacing;
+    if (!palette.gridVisible) {
+        return;
+    }
+    qreal spacing = palette.gridSpacing;
     while (spacing * zoom < 12.0) {
         spacing *= static_cast<qreal>(majorGridInterval);
     }
@@ -75,7 +77,8 @@ void drawSegmentBuffer(QPainter& painter,
 
 bool RenderPalette::isValid() const noexcept {
     return canvas.isValid() && gridMinor.isValid() && gridMajor.isValid() && selection.isValid() &&
-           diagnostic.isValid() && text.isValid();
+           diagnostic.isValid() && text.isValid() && std::isfinite(gridSpacing) &&
+           gridSpacing > 0.0;
 }
 
 RenderStatistics PainterSceneRenderer::render(QPainter& painter,

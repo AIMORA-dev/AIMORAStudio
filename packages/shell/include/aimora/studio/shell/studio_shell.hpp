@@ -61,12 +61,24 @@ class DrawingWorkspace final : public QWidget {
     void setElectricalPortSnaps(QVector<commands::SnapCandidate> ports);
     void setSemanticItemIds(QHash<quint64, QString> semanticItemIds);
     void setCanonicalEditHandler(CanonicalEditHandler handler);
+    void setCanonicalEditConfirmationRequired(bool required);
+    void resolveCanonicalEdit(bool accepted);
     void setInspectionSelectionHandler(InspectionSelectionHandler handler);
+    void setCommandInputHandler(std::function<void(const QString&)> handler);
+    [[nodiscard]] bool setCustomCommandAliases(const QHash<QString, QString>& aliases);
+    [[nodiscard]] QHash<QString, QString> commandAliases() const;
     [[nodiscard]] bool executeCommandText(QStringView input);
+    [[nodiscard]] bool zoomToExtents();
+    [[nodiscard]] bool zoomToSelection();
+    [[nodiscard]] bool selectAllDrawingItems();
     void setGridSnapEnabled(bool enabled);
+    void setGridVisible(bool visible);
+    void setObjectSnapEnabled(bool enabled);
     void setOrthoEnabled(bool enabled);
     void setPolarEnabled(bool enabled);
     [[nodiscard]] bool gridSnapEnabled() const noexcept;
+    [[nodiscard]] bool gridVisible() const noexcept;
+    [[nodiscard]] bool objectSnapEnabled() const noexcept;
     [[nodiscard]] bool orthoEnabled() const noexcept;
     [[nodiscard]] bool polarEnabled() const noexcept;
     [[nodiscard]] const commands::SelectionModel& selection() const noexcept;
@@ -83,13 +95,16 @@ class DrawingWorkspace final : public QWidget {
   private:
     void updatePointer(const QPointF& pixelPoint);
     void applyViewport();
-    void completeCommand();
+    void rememberZoomView(const commands::PrecisionViewport& previous);
+    [[nodiscard]] bool zoomToDrawingBounds(bool selectedOnly);
+    bool completeCommand();
     [[nodiscard]] bool dispatchCanonicalEdit(const commands::CanonicalEditRequest& request);
 
     themes::ThemeTokens tokens_{themes::lightThemeTokens()};
     renderer::SceneSurface* sceneSurface_{nullptr};
     QWidget* interactionSurface_{nullptr};
     commands::PrecisionViewport precisionViewport_;
+    QVector<commands::PrecisionViewport> zoomHistory_;
     commands::SnapSettings snapSettings_;
     commands::SnapResolver snapResolver_;
     commands::SnapResult pointerSnap_;
@@ -99,6 +114,11 @@ class DrawingWorkspace final : public QWidget {
     QHash<quint64, QString> semanticItemIds_;
     CanonicalEditHandler canonicalEditHandler_;
     InspectionSelectionHandler inspectionSelectionHandler_;
+    std::function<void(const QString&)> commandInputHandler_;
+    QString lastCompletedCommand_;
+    bool canonicalEditConfirmationRequired_{false};
+    std::optional<commands::DrawingCommandSession> submittedCommand_;
+    QString submittedCommandId_;
     QPointF pointerPixel_;
     QPointF dragOriginPixel_;
     QPointF previousPanPixel_;
@@ -107,6 +127,8 @@ class DrawingWorkspace final : public QWidget {
     bool marqueeActive_{false};
     bool panning_{false};
     bool spacePanEnabled_{false};
+    bool spacePanUsed_{false};
+    bool zoomOptionPending_{false};
     quint64 dispatchedCanonicalEditCount_{0};
 };
 
@@ -141,6 +163,8 @@ class WorkspaceSettings final {
     [[nodiscard]] WorkspaceRestoreStatus restore(QMainWindow& window);
     void save(const QMainWindow& window);
     void clearLayout();
+    [[nodiscard]] QHash<QString, QString> customCommandAliases() const;
+    [[nodiscard]] bool saveCustomCommandAliases(const QHash<QString, QString>& aliases);
 
     [[nodiscard]] bool panelPinned(QStringView panelId) const;
     void savePanelPinned(QStringView panelId, bool pinned);
@@ -172,6 +196,10 @@ class StudioMainWindow final : public QMainWindow {
     void saveWorkspace();
     void resetWorkspace();
     void bindInspectionService(protocol::ServiceClient* client);
+    void bindProjectService(protocol::ServiceClient* client);
+    [[nodiscard]] bool openDrawingProject(const QString& path);
+    [[nodiscard]] bool createDrawingProject(const QString& path, const QString& name);
+    [[nodiscard]] bool saveDrawingProject();
     void bindSemanticEditService(protocol::ServiceClient* client,
                                  QString projectId,
                                  QString baseRevision);
@@ -190,6 +218,9 @@ class StudioMainWindow final : public QMainWindow {
     void updateTheme();
     void updateThemeActions();
     void showAboutDialog();
+    void showCommandAliases();
+    void refreshDrawingAliasLabels();
+    void handleProjectServiceUnavailable();
 
     [[nodiscard]] QMenu* menu(QStringView menuId) const;
     [[nodiscard]] QAction* registerAction(QString id,
@@ -205,6 +236,7 @@ class StudioMainWindow final : public QMainWindow {
     [[nodiscard]] QWidget* createCommandPanel();
     void addUnavailableAction(QMenu& target, const QString& explanation);
     [[nodiscard]] bool dispatchSemanticEdit(const commands::CanonicalEditRequest& request);
+    [[nodiscard]] bool applyDrawingScene(const QJsonObject& payload);
 
     themes::ThemeController& themeController_;
     WorkspaceSettings workspaceSettings_;
@@ -223,6 +255,12 @@ class StudioMainWindow final : public QMainWindow {
     QString semanticProjectId_;
     QString semanticRevision_;
     QSet<QString> pendingSemanticRequests_;
+    QPointer<protocol::ServiceClient> projectClient_;
+    QString pendingProjectOpen_;
+    QString pendingProjectSave_;
+    QMetaObject::Connection projectResponseConnection_;
+    QMetaObject::Connection projectStateConnection_;
+    QMetaObject::Connection projectDestroyedConnection_;
     QMetaObject::Connection semanticResponseConnection_;
     QMetaObject::Connection semanticClientDestroyedConnection_;
     WorkspaceRestoreStatus restoreStatus_{WorkspaceRestoreStatus::NoSavedState};

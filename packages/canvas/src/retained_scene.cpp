@@ -66,11 +66,20 @@ bool appendSegment(SegmentBuffer& target,
         });
         return false;
     }
+    const QRectF bounds = segmentBounds(start, end, styles[styleIndex].strokeWidth);
+    if (!finiteRect(bounds) || !bounds.isValid()) {
+        diagnostics.push_back({
+            QStringLiteral("scene.nonfinite_bounds"),
+            QStringLiteral("primitive extent cannot be represented by finite valid bounds"),
+            id,
+        });
+        return false;
+    }
     target.starts.push_back(start);
     target.ends.push_back(end);
     target.styleIndices.push_back(styleIndex);
     target.ids.push_back(id);
-    target.bounds.push_back(segmentBounds(start, end, styles[styleIndex].strokeWidth));
+    target.bounds.push_back(bounds);
     ++compiledSegmentCount;
     return true;
 }
@@ -88,6 +97,15 @@ bool compilePrimitive(const PrimitiveVector& primitive,
     if (primitive.id == 0) {
         return failShape(QStringLiteral("primitive requires a non-zero stable id"));
     }
+    const auto fitsSegmentBudget = [&](const qsizetype required) {
+        if (required <= limits.maximumCompiledSegments - compiledSegmentCount) {
+            return true;
+        }
+        diagnostics.push_back({QStringLiteral("scene.segment_limit"),
+                               QStringLiteral("compiled scene exceeds the segment limit"),
+                               primitive.id});
+        return false;
+    };
     const auto append = [&](const QPointF& start, const QPointF& end) {
         return appendSegment(target,
                              compiledSegmentCount,
@@ -109,6 +127,11 @@ bool compilePrimitive(const PrimitiveVector& primitive,
         const qsizetype minimum = primitive.kind == PrimitiveKind::Polygon ? 3 : 2;
         if (primitive.points.size() < minimum) {
             return failShape(QStringLiteral("polyline or polygon has too few points"));
+        }
+        const qsizetype required = primitive.points.size() - 1 +
+                                   (primitive.kind == PrimitiveKind::Polygon ? 1 : 0);
+        if (!fitsSegmentBudget(required)) {
+            return false;
         }
         for (qsizetype index = 1; index < primitive.points.size(); ++index) {
             if (!append(primitive.points[index - 1], primitive.points[index])) {
@@ -141,11 +164,15 @@ bool compilePrimitive(const PrimitiveVector& primitive,
         !std::isfinite(start) || !std::isfinite(sweep) || sweep == 0.0 || std::abs(sweep) > 360.0) {
         return failShape(QStringLiteral("radial primitive has invalid radii or angles"));
     }
+    start = std::remainder(start, 360.0);
     const int segmentCount =
         std::max(1,
                  static_cast<int>(std::ceil((std::abs(sweep) / 360.0) *
                                             static_cast<qreal>(limits.arcSegmentsPerCircle))));
     const QPointF center = primitive.points.front();
+    if (!fitsSegmentBudget(segmentCount)) {
+        return false;
+    }
     auto radialPoint = [&](const int index) {
         const qreal fraction = static_cast<qreal>(index) / static_cast<qreal>(segmentCount);
         const qreal radians = (start + (sweep * fraction)) * std::numbers::pi_v<qreal> / 180.0;
@@ -154,9 +181,11 @@ bool compilePrimitive(const PrimitiveVector& primitive,
             center.y() + (std::sin(radians) * radiusY),
         };
     };
-    QPointF previous = radialPoint(0);
+    const QPointF first = radialPoint(0);
+    QPointF previous = first;
     for (int index = 1; index <= segmentCount; ++index) {
-        const QPointF current = radialPoint(index);
+        const QPointF current = index == segmentCount && std::abs(sweep) == 360.0
+                                    ? first : radialPoint(index);
         if (!append(previous, current)) {
             return false;
         }
@@ -181,8 +210,7 @@ bool compilePrimitive(const PrimitiveVector& primitive,
     bytes += instances.size() * static_cast<qsizetype>(sizeof(SymbolInstance));
     bytes += overlays.size() * static_cast<qsizetype>(sizeof(SceneOverlay));
     bytes += page.has_value() ? static_cast<qsizetype>(sizeof(ScenePage)) : 0;
-    bytes += index.recordCount() * static_cast<qsizetype>(sizeof(SpatialRecord));
-    bytes += index.nodeCount() * static_cast<qsizetype>(sizeof(QRectF) + (4 * sizeof(qsizetype)));
+    bytes += index.estimatedBytes();
     for (const SceneText& text : texts) {
         bytes += static_cast<qsizetype>(sizeof(SceneText)) +
                  (text.text.size() * static_cast<qsizetype>(sizeof(QChar))) +
@@ -211,7 +239,8 @@ bool SegmentBuffer::isValid(const qsizetype styleCount) const noexcept {
     }
     for (qsizetype index = 0; index < count; ++index) {
         if (!finitePoint(starts[index]) || !finitePoint(ends[index]) ||
-            styleIndices[index] >= static_cast<quint32>(styleCount) || !bounds[index].isValid()) {
+            styleIndices[index] >= static_cast<quint32>(styleCount) ||
+            !finiteRect(bounds[index]) || !bounds[index].isValid()) {
             return false;
         }
     }
@@ -554,6 +583,12 @@ SceneCompileResult RetainedSceneCompiler::compile(const SceneDocument& document,
         return result;
     }
     SceneSpatialIndex spatialIndex{records};
+    if (!spatialIndex.isValid()) {
+        result.diagnostics.push_back({QStringLiteral("scene.spatial_bounds"),
+                                      QStringLiteral("scene spatial extent is not finite"),
+                                      0});
+        return result;
+    }
     SceneStatistics statistics;
     statistics.sourcePrimitiveCount = sourceCount;
     statistics.segmentCount = compiledSegmentCount;

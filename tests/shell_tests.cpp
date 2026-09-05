@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+#include "aimora/studio/shell/local_service_configuration.hpp"
+#include <QFile>
+#include <QTimer>
+#include <QTemporaryDir>
 #include "aimora/studio/shell/studio_shell.hpp"
 #include "aimora/studio/themes/theme_system.hpp"
 
@@ -87,6 +91,95 @@ class ShellTests final : public QObject {
     Q_OBJECT
 
 private slots:
+    void cancelingLocalServiceSetupLeavesSettingsUntouched_data() {
+        QTest::addColumn<bool>("chooseAgain");
+        QTest::newRow("first-use") << false;
+        QTest::newRow("replace-saved-installation") << true;
+    }
+
+    void cancelingLocalServiceSetupLeavesSettingsUntouched() {
+        QFETCH(bool, chooseAgain);
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        QSettings settings{root.filePath(QStringLiteral("settings.ini")), QSettings::IniFormat};
+        settings.setValue(QStringLiteral("workspace/retainedPreference"), QStringLiteral("unchanged"));
+        const QString program = root.filePath(QStringLiteral("julia.exe"));
+        const QString project = root.filePath(QStringLiteral("service"));
+        if(chooseAgain) {
+            QVERIFY(QDir{}.mkpath(QDir{project}.filePath(QStringLiteral("bin"))));
+            for(const QString& path : QStringList{program,
+                    QDir{project}.filePath(QStringLiteral("Project.toml")),
+                    QDir{project}.filePath(QStringLiteral("bin/aimora-service.jl"))}) {
+                QFile file{path};
+                QVERIFY(file.open(QIODevice::WriteOnly));
+            }
+            settings.setValue(QStringLiteral("service/juliaExecutable"), program);
+            settings.setValue(QStringLiteral("service/projectDirectory"), project);
+        }
+        const QStringList previousKeys = settings.allKeys();
+        QWidget parent;
+        int explanations = 0;
+        int fileChoosers = 0;
+        QTimer dismiss;
+        dismiss.setInterval(10);
+        QObject::connect(&dismiss, &QTimer::timeout, &parent, [&]() {
+            if(auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+                ++explanations;
+                message->accept();
+            } else if(auto* chooser = qobject_cast<QFileDialog*>(QApplication::activeModalWidget())) {
+                ++fileChoosers;
+                chooser->reject();
+            }
+        });
+        const bool nativeDialogsDisabled = QApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+        QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, true);
+        dismiss.start();
+        const auto configuration = aimora::studio::shell::configureLocalDrawingService(parent, settings, chooseAgain);
+        dismiss.stop();
+        QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, nativeDialogsDisabled);
+        QVERIFY(!configuration.has_value());
+        QCOMPARE(explanations, 1);
+        QCOMPARE(fileChoosers, 1);
+        QCOMPARE(settings.allKeys(), previousKeys);
+        if(chooseAgain) {
+            QCOMPARE(settings.value(QStringLiteral("service/juliaExecutable")).toString(), program);
+            QCOMPARE(settings.value(QStringLiteral("service/projectDirectory")).toString(), project);
+        }
+        QCOMPARE(settings.value(QStringLiteral("workspace/retainedPreference")).toString(), QStringLiteral("unchanged"));
+    }
+
+    void localServiceConfigurationKeepsPathsAsSeparateArguments() {
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const QString project = root.filePath(QStringLiteral("service project"));
+        QVERIFY(QDir{}.mkpath(QDir{project}.filePath(QStringLiteral("bin"))));
+        const QString program = root.filePath(QStringLiteral("julia executable.exe"));
+        const QString entrypoint = QDir{project}.filePath(QStringLiteral("bin/aimora-service.jl"));
+        for(const QString& path : QStringList{program, QDir{project}.filePath(QStringLiteral("Project.toml")), entrypoint}) {
+            QFile file{path};
+            QVERIFY(file.open(QIODevice::WriteOnly));
+        }
+        const auto configuration = aimora::studio::shell::localDrawingServiceConfiguration(program, project);
+        QVERIFY(configuration.has_value());
+        QCOMPARE(configuration->program, program);
+        QCOMPARE(configuration->programArguments, (QStringList{
+            QStringLiteral("--startup-file=no"), QStringLiteral("--threads=1"),
+            QStringLiteral("--project=%1").arg(project), entrypoint}));
+        QVERIFY(configuration->allowedRoots.isEmpty());
+        QSettings settings{root.filePath(QStringLiteral("settings.ini")), QSettings::IniFormat};
+        settings.setValue(QStringLiteral("service/juliaExecutable"), program);
+        settings.setValue(QStringLiteral("service/projectDirectory"), project);
+        QWidget parent;
+        const auto restored = aimora::studio::shell::configureLocalDrawingService(parent, settings);
+        QVERIFY(restored.has_value());
+        QCOMPARE(restored->programArguments, configuration->programArguments);
+        QVERIFY(!aimora::studio::shell::localDrawingServiceConfiguration(QStringLiteral("julia.exe"), project));
+        QVERIFY(!aimora::studio::shell::localDrawingServiceConfiguration(program, QStringLiteral("relative/service")));
+        QVERIFY(!aimora::studio::shell::localDrawingServiceConfiguration(root.path(), project));
+        QVERIFY(QFile::remove(entrypoint));
+        QVERIFY(!aimora::studio::shell::localDrawingServiceConfiguration(program, project));
+    }
+
     void themeTokensMatchCommittedFixtures();
     void themePreferencePersists();
     void shellDefaultsToMenuAndCanvasOnly();

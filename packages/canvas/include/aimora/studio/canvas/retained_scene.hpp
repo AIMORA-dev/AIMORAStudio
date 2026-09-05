@@ -104,7 +104,7 @@ struct SceneLimits final {
     qsizetype maximumTextRuns{500'000};
     qsizetype maximumSpatialRecords{5'000'000};
     qsizetype maximumBytes{512 * 1024 * 1024};
-    int arcSegmentsPerCircle{32};
+    int arcSegmentsPerCircle{128};
 
     [[nodiscard]] bool isValid() const noexcept;
 };

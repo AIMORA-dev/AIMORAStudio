@@ -2,6 +2,7 @@
 #include "aimora/studio/commands/drawing_interaction.hpp"
 
 #include <QLocale>
+#include <QRegularExpression>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -14,6 +15,36 @@ namespace {
 constexpr qreal comparisonTolerance = 1.0e-9;
 constexpr qsizetype maximumCommandPoints = 100'000;
 
+[[nodiscard]] std::optional<QString> canonicalDecimalText(QStringView input) {
+    if (input.size() > 4096) {
+        return std::nullopt;
+    }
+    static const QRegularExpression decimal{
+        QStringLiteral("\\A([+-]?)(?:([0-9]+)(?:\\.([0-9]*))?|\\.([0-9]+))([eE][+-]?[0-9]+)?\\z")};
+    const auto match = decimal.match(input.toString().trimmed());
+    if (!match.hasMatch()) {
+        return std::nullopt;
+    }
+    QString integer = match.captured(2);
+    if (integer.isEmpty()) {
+        integer = QStringLiteral("0");
+    }
+    qsizetype firstDigit = 0;
+    while (firstDigit + 1 < integer.size() && integer[firstDigit] == QLatin1Char('0')) {
+        ++firstDigit;
+    }
+    integer = integer.sliced(firstDigit);
+    const QString fraction = match.captured(2).isEmpty() ? match.captured(4) : match.captured(3);
+    QString result = match.captured(1) == QStringLiteral("-") ? QStringLiteral("-") : QString{};
+    result += integer;
+    if (!fraction.isEmpty()) {
+        result += QLatin1Char('.');
+        result += fraction;
+    }
+    result += match.captured(5);
+    return result.size() <= 4096 ? std::optional<QString>{result} : std::nullopt;
+}
+
 [[nodiscard]] bool finitePoint(const QPointF& point) noexcept {
     return std::isfinite(point.x()) && std::isfinite(point.y());
 }
@@ -21,7 +52,8 @@ constexpr qsizetype maximumCommandPoints = 100'000;
 [[nodiscard]] bool finiteBounds(const QRectF& bounds) noexcept {
     return std::isfinite(bounds.x()) && std::isfinite(bounds.y()) &&
            std::isfinite(bounds.width()) && std::isfinite(bounds.height()) &&
-           bounds.width() >= 0.0 && bounds.height() >= 0.0;
+           bounds.width() >= 0.0 && bounds.height() >= 0.0 &&
+           std::isfinite(bounds.right()) && std::isfinite(bounds.bottom());
 }
 
 [[nodiscard]] std::optional<qreal> parseScalar(QStringView input) {
@@ -131,6 +163,23 @@ struct SnapChoice final {
                                                       : settings.objectEnabled;
 }
 
+[[nodiscard]] bool alignmentCandidatePrecedes(const SnapCandidate& candidate,
+                                              const SnapCandidate& current) {
+    if (snapPriority(candidate.kind) != snapPriority(current.kind)) {
+        return snapPriority(candidate.kind) < snapPriority(current.kind);
+    }
+    if (candidate.itemId != current.itemId) {
+        return candidate.itemId < current.itemId;
+    }
+    if (candidate.point.x() != current.point.x()) {
+        return candidate.point.x() < current.point.x();
+    }
+    if (candidate.point.y() != current.point.y()) {
+        return candidate.point.y() < current.point.y();
+    }
+    return candidate.semanticId < current.semanticId;
+}
+
 } // namespace
 
 std::optional<CoordinateInput> CoordinateInterpreter::parse(QStringView input,
@@ -152,16 +201,24 @@ std::optional<CoordinateInput> CoordinateInterpreter::parse(QStringView input,
             if (!distance.has_value() || !degrees.has_value() || *distance < 0.0) {
                 return std::nullopt;
             }
-            const qreal radians = *degrees * std::numbers::pi_v<qreal> / 180.0;
+            const qreal radians = std::remainder(*degrees, 360.0) *
+                                  (std::numbers::pi_v<qreal> / 180.0);
             const QPointF point =
                 anchor + QPointF{*distance * std::cos(radians), *distance * std::sin(radians)};
+            if (!finitePoint(point)) {
+                return std::nullopt;
+            }
             return CoordinateInput{point, CoordinateInputKind::Polar};
         }
         const auto delta = parseCartesian(relative);
         if (!delta.has_value()) {
             return std::nullopt;
         }
-        return CoordinateInput{anchor + *delta, CoordinateInputKind::Relative};
+        const QPointF point = anchor + *delta;
+        if (!finitePoint(point)) {
+            return std::nullopt;
+        }
+        return CoordinateInput{point, CoordinateInputKind::Relative};
     }
     const auto point = parseCartesian(view);
     if (!point.has_value()) {
@@ -202,9 +259,14 @@ bool PrecisionViewport::zoomAt(const QPointF& pixel,
     if (!std::isfinite(nextZoom) || std::abs(nextZoom - zoom) <= comparisonTolerance) {
         return false;
     }
+    const QPointF nextCenter = fixedScenePoint -
+        QPointF{(pixel.x() - (pixelExtent.width() / 2.0)) / nextZoom,
+                (pixel.y() - (pixelExtent.height() / 2.0)) / nextZoom};
+    if (!finitePoint(fixedScenePoint) || !finitePoint(nextCenter)) {
+        return false;
+    }
     zoom = nextZoom;
-    center = fixedScenePoint - QPointF{(pixel.x() - (pixelExtent.width() / 2.0)) / zoom,
-                                       (pixel.y() - (pixelExtent.height() / 2.0)) / zoom};
+    center = nextCenter;
     return true;
 }
 
@@ -212,7 +274,39 @@ void PrecisionViewport::panBy(const QPointF& pixelDelta) noexcept {
     if (!finitePoint(pixelDelta) || !std::isfinite(zoom) || zoom <= 0.0) {
         return;
     }
-    center -= pixelDelta / zoom;
+    const QPointF nextCenter = center - pixelDelta / zoom;
+    if (finitePoint(nextCenter)) {
+        center = nextCenter;
+    }
+}
+
+bool PrecisionViewport::fitBounds(const QRectF& bounds, const QSizeF& pixelExtent,
+                                  const qreal paddingPixels) noexcept {
+    const QRectF normalized = bounds.normalized();
+    if (!isValid(pixelExtent) || !finiteBounds(normalized) ||
+        !std::isfinite(paddingPixels) || paddingPixels < 0.0) {
+        return false;
+    }
+    const qreal availableWidth = pixelExtent.width() - 2.0 * paddingPixels;
+    const qreal availableHeight = pixelExtent.height() - 2.0 * paddingPixels;
+    if (availableWidth <= 0.0 || availableHeight <= 0.0) {
+        return false;
+    }
+    qreal fittedZoom = maximumZoom;
+    if (normalized.width() > 0.0) {
+        fittedZoom = std::min(fittedZoom, availableWidth / normalized.width());
+    }
+    if (normalized.height() > 0.0) {
+        fittedZoom = std::min(fittedZoom, availableHeight / normalized.height());
+    }
+    const QPointF fittedCenter{normalized.left() / 2.0 + normalized.right() / 2.0,
+                               normalized.top() / 2.0 + normalized.bottom() / 2.0};
+    if (!std::isfinite(fittedZoom) || fittedZoom < minimumZoom || !finitePoint(fittedCenter)) {
+        return false;
+    }
+    center = fittedCenter;
+    zoom = fittedZoom;
+    return true;
 }
 
 bool SnapSettings::isValid() const noexcept {
@@ -236,6 +330,9 @@ SnapResult SnapResolver::resolve(const QPointF& rawScenePoint,
         return {rawScenePoint, SnapKind::None, 0, {}, {}};
     }
     const QPointF constrained = constrainedPoint(rawScenePoint, anchor, settings);
+    if (!finitePoint(constrained)) {
+        return {rawScenePoint, SnapKind::None, 0, {}, {}};
+    }
     const QPointF targetPixel = viewport.pixelPoint(constrained, pixelExtent);
     SnapChoice best;
     auto consider = [&](const QPointF& point,
@@ -266,17 +363,23 @@ SnapResult SnapResolver::resolve(const QPointF& rawScenePoint,
         qreal horizontalDistance = std::numeric_limits<qreal>::infinity();
         qreal verticalDistance = std::numeric_limits<qreal>::infinity();
         for (const SnapCandidate& candidate : candidates) {
-            if (!candidateEnabled(candidate, settings)) {
+            if (!candidateEnabled(candidate, settings) || !finitePoint(candidate.point)) {
                 continue;
             }
             const QPointF candidatePixel = viewport.pixelPoint(candidate.point, pixelExtent);
             const qreal xDistance = std::abs(candidatePixel.x() - targetPixel.x());
             const qreal yDistance = std::abs(candidatePixel.y() - targetPixel.y());
-            if (xDistance <= settings.tolerancePixels && xDistance < verticalDistance) {
+            if (xDistance <= settings.tolerancePixels &&
+                (xDistance < verticalDistance ||
+                 (xDistance == verticalDistance && vertical.has_value() &&
+                  alignmentCandidatePrecedes(candidate, *vertical)))) {
                 verticalDistance = xDistance;
                 vertical = candidate;
             }
-            if (yDistance <= settings.tolerancePixels && yDistance < horizontalDistance) {
+            if (yDistance <= settings.tolerancePixels &&
+                (yDistance < horizontalDistance ||
+                 (yDistance == horizontalDistance && horizontal.has_value() &&
+                  alignmentCandidatePrecedes(candidate, *horizontal)))) {
                 horizontalDistance = yDistance;
                 horizontal = candidate;
             }
@@ -306,11 +409,19 @@ SnapResult SnapResolver::resolve(const QPointF& rawScenePoint,
     if (best.kind == SnapKind::None) {
         return {constrained, SnapKind::None, 0, {}, {}};
     }
+    guides.erase(std::remove_if(guides.begin(), guides.end(), [&](const AlignmentGuide& guide) {
+        const qreal coordinate = guide.orientation == Qt::Vertical ? best.point.x() : best.point.y();
+        return coordinate != guide.coordinate;
+    }), guides.end());
     return {best.point, best.kind, best.itemId, std::move(guides), best.semanticId};
 }
 
 void SelectionModel::clear() noexcept {
     selectedIds_.clear();
+}
+
+void SelectionModel::replaceSelection(const QVector<quint64>& itemIds) {
+    applyIds(itemIds, SelectionOperation::Replace);
 }
 
 void SelectionModel::applyHit(const QVector<quint64>& hitIds, const SelectionOperation operation) {
@@ -329,14 +440,27 @@ void SelectionModel::applyMarquee(const QVector<SelectionRecord>& records,
                                   const bool crossing,
                                   const SelectionOperation operation) {
     const QRectF normalizedArea = area.normalized();
+    if (!finiteBounds(normalizedArea)) {
+        return;
+    }
     QVector<quint64> matches;
     matches.reserve(records.size());
     for (const SelectionRecord& record : records) {
         if (record.itemId == 0 || !finiteBounds(record.bounds)) {
             continue;
         }
-        const bool selected = crossing ? normalizedArea.intersects(record.bounds)
-                                       : normalizedArea.contains(record.bounds);
+        // Closed interval comparisons include line and point bounds, which
+        // QRectF::intersects treats as empty rectangles.
+        const QRectF& bounds = record.bounds;
+        const bool selected = crossing
+                                  ? normalizedArea.left() <= bounds.right() &&
+                                        bounds.left() <= normalizedArea.right() &&
+                                        normalizedArea.top() <= bounds.bottom() &&
+                                        bounds.top() <= normalizedArea.bottom()
+                                  : normalizedArea.left() <= bounds.left() &&
+                                        bounds.right() <= normalizedArea.right() &&
+                                        normalizedArea.top() <= bounds.top() &&
+                                        bounds.bottom() <= normalizedArea.bottom();
         if (selected) {
             matches.append(record.itemId);
         }
@@ -423,8 +547,40 @@ DrawingCommandSession::DrawingCommandSession()
                {QStringLiteral("line"), QStringLiteral("draw.line")},
                {QStringLiteral("pl"), QStringLiteral("draw.polyline")},
                {QStringLiteral("polyline"), QStringLiteral("draw.polyline")},
+               {QStringLiteral("rec"), QStringLiteral("draw.rectangle")},
+               {QStringLiteral("rectangle"), QStringLiteral("draw.rectangle")},
+               {QStringLiteral("t"), QStringLiteral("draw.text")},
+               {QStringLiteral("text"), QStringLiteral("draw.text")},
+               {QStringLiteral("c"), QStringLiteral("draw.circle")},
+               {QStringLiteral("circle"), QStringLiteral("draw.circle")},
+               {QStringLiteral("a"), QStringLiteral("draw.arc")},
+               {QStringLiteral("arc"), QStringLiteral("draw.arc")},
+               {QStringLiteral("el"), QStringLiteral("draw.ellipse")},
+               {QStringLiteral("ellipse"), QStringLiteral("draw.ellipse")},
+               {QStringLiteral("mih"), QStringLiteral("modify.mirror_horizontal")},
+               {QStringLiteral("miv"), QStringLiteral("modify.mirror_vertical")},
+               {QStringLiteral("r90"), QStringLiteral("modify.rotate_quarter")},
+               {QStringLiteral("ax"), QStringLiteral("modify.align_anchor_x")},
+               {QStringLiteral("ed"), QStringLiteral("modify.text")},
+               {QStringLiteral("ddedit"), QStringLiteral("modify.text")},
+               {QStringLiteral("x"), QStringLiteral("modify.explode_paths")},
+               {QStringLiteral("explode"), QStringLiteral("modify.explode_paths")},
+               {QStringLiteral("j"), QStringLiteral("modify.join_lines")},
+               {QStringLiteral("join"), QStringLiteral("modify.join_lines")},
+               {QStringLiteral("ay"), QStringLiteral("modify.align_anchor_y")},
+               {QStringLiteral("dx"), QStringLiteral("modify.distribute_anchor_x")},
+               {QStringLiteral("dy"), QStringLiteral("modify.distribute_anchor_y")},
+               {QStringLiteral("undo"), QStringLiteral("edit.undo")},
+               {QStringLiteral("redo"), QStringLiteral("edit.redo")},
                {QStringLiteral("m"), QStringLiteral("modify.move")},
                {QStringLiteral("move"), QStringLiteral("modify.move")},
+               {QStringLiteral("co"), QStringLiteral("modify.copy")},
+               {QStringLiteral("cp"), QStringLiteral("modify.copy")},
+               {QStringLiteral("copy"), QStringLiteral("modify.copy")},
+               {QStringLiteral("sc"), QStringLiteral("modify.scale")},
+               {QStringLiteral("scale"), QStringLiteral("modify.scale")},
+               {QStringLiteral("erase"), QStringLiteral("modify.erase")},
+               {QStringLiteral("e"), QStringLiteral("modify.erase")},
                {QStringLiteral("wire"), QStringLiteral("electrical.connect")},
                {QStringLiteral("connect"), QStringLiteral("electrical.connect")},
                {QStringLiteral("place"), QStringLiteral("equipment.place")},
@@ -452,13 +608,202 @@ CommandStartResult DrawingCommandSession::begin(QStringView commandOrAlias) {
     return CommandStartResult::Started;
 }
 
+bool DrawingCommandSession::setCustomAliases(const QHash<QString, QString>& aliases) {
+    if (isActive() || aliases.size() > 64) {
+        return false;
+    }
+    const QSet<QString> reserved{QStringLiteral("cancel"), QStringLiteral("grid"),
+        QStringLiteral("ortho"), QStringLiteral("polar"), QStringLiteral("snap"),
+        QStringLiteral("select"), QStringLiteral("pan"), QStringLiteral("zoom"),
+        QStringLiteral("gridview"), QStringLiteral("z"), QStringLiteral("ze"),
+        QStringLiteral("zoomextents"), QStringLiteral("selectall")};
+    QHash<QString, QString> normalized;
+    for (auto iterator = aliases.cbegin(); iterator != aliases.cend(); ++iterator) {
+        const QString alias = iterator.key().trimmed().toLower();
+        const QString command = iterator.value().trimmed().toLower();
+        const bool portable = !alias.isEmpty() && alias.size() <= 16 &&
+            std::all_of(alias.cbegin(), alias.cend(), [](QChar character) {
+                return (character >= QLatin1Char('a') && character <= QLatin1Char('z')) ||
+                       (character >= QLatin1Char('0') && character <= QLatin1Char('9'));
+            }) && alias.front() >= QLatin1Char('a') && alias.front() <= QLatin1Char('z');
+        if (!portable || reserved.contains(alias) || normalized.contains(alias) ||
+            minimumPointCount(QStringView{command}) == std::numeric_limits<qsizetype>::max()) {
+            return false;
+        }
+        normalized.insert(alias, command);
+    }
+    customAliases_ = std::move(normalized);
+    return true;
+}
+
+QHash<QString, QString> DrawingCommandSession::commandAliases() const {
+    auto result = aliases_;
+    for (auto iterator = customAliases_.cbegin(); iterator != customAliases_.cend(); ++iterator) {
+        result.insert(iterator.key(), iterator.value());
+    }
+    return result;
+}
+
 bool DrawingCommandSession::acceptPoint(const QPointF& point, QString semanticId) {
+    if (activeCommandId_ == QStringLiteral("modify.join_lines") ||
+        activeCommandId_ == QStringLiteral("modify.explode_paths") ||
+        activeCommandId_ == QStringLiteral("modify.text") ||
+        activeCommandId_.startsWith(QStringLiteral("modify.distribute_anchor_")) ||
+        (activeCommandId_.startsWith(QStringLiteral("modify.align_anchor_")) && !points_.isEmpty())) {
+        return false;
+    }
     if (!isActive() || !finitePoint(point) || points_.size() >= maximumCommandPoints) {
         return false;
     }
+    if (activeCommandId_ == QStringLiteral("draw.arc") && points_.size() >= 3) {
+        return false;
+    }
+    if (activeCommandId_ == QStringLiteral("draw.ellipse") && points_.size() >= 2) {
+        return false;
+    }
+    if ((activeCommandId_ == QStringLiteral("modify.mirror_horizontal") ||
+         activeCommandId_ == QStringLiteral("modify.rotate_quarter") ||
+         activeCommandId_ == QStringLiteral("modify.mirror_vertical")) && !points_.isEmpty()) {
+        return false;
+    }
+    if ((activeCommandId_ == QStringLiteral("draw.rectangle") ||
+         activeCommandId_ == QStringLiteral("draw.circle")) && points_.size() >= 2) {
+        return false;
+    }
+    if ((activeCommandId_ == QStringLiteral("draw.text") ||
+         activeCommandId_ == QStringLiteral("modify.scale")) && !points_.isEmpty()) {
+        return false;
+    }
+    attributes_.remove(QStringLiteral("close_path"));
     points_.append(point);
     pointSemanticIds_.append(std::move(semanticId));
+    coordinateInputs_.append(QJsonValue{QJsonValue::Null});
     pointerPoint_ = point;
+    return true;
+}
+
+bool DrawingCommandSession::acceptCoordinateInput(QStringView input, const QPointF& anchor) {
+    const auto coordinate = CoordinateInterpreter::parse(input, anchor);
+    if (!coordinate.has_value()) {
+        return false;
+    }
+    QString canonicalInput;
+    if (coordinate->kind != CoordinateInputKind::Polar) {
+        QString text = input.toString().trimmed();
+        const bool relative = text.startsWith(QLatin1Char('@'));
+        if (relative) {
+            text.remove(0, 1);
+        }
+        const qsizetype separator = text.indexOf(QLatin1Char(','));
+        if (separator < 0) {
+            return false;
+        }
+        const auto horizontal = canonicalDecimalText(QStringView{text}.first(separator));
+        const auto vertical = canonicalDecimalText(QStringView{text}.sliced(separator + 1));
+        if (!horizontal.has_value() || !vertical.has_value()) {
+            return false;
+        }
+        canonicalInput = (relative ? QStringLiteral("@") : QString{}) + *horizontal +
+                         QLatin1Char(',') + *vertical;
+    }
+    if (!acceptPoint(coordinate->point)) {
+        return false;
+    }
+    if (coordinate->kind != CoordinateInputKind::Polar) {
+        coordinateInputs_.replace(coordinateInputs_.size() - 1, QJsonObject{
+            {QStringLiteral("text"), canonicalInput},
+            {QStringLiteral("anchor"), QJsonArray{QString::number(anchor.x(), 'g', 17),
+                                                   QString::number(anchor.y(), 'g', 17)}},
+        });
+    }
+    return true;
+}
+
+bool DrawingCommandSession::undoPolylineVertex() {
+    return activeCommandId_ == QStringLiteral("draw.polyline") && undoPathVertex();
+}
+
+bool DrawingCommandSession::undoPathVertex() {
+    if ((activeCommandId_ != QStringLiteral("draw.polyline") &&
+         activeCommandId_ != QStringLiteral("draw.line") &&
+         activeCommandId_ != QStringLiteral("draw.arc")) || points_.isEmpty()) {
+        return false;
+    }
+    attributes_.remove(QStringLiteral("close_path"));
+    points_.removeLast();
+    pointSemanticIds_.removeLast();
+    coordinateInputs_.removeLast();
+    pointerPoint_ = anchor();
+    return true;
+}
+
+bool DrawingCommandSession::closePolyline() {
+    return activeCommandId_ == QStringLiteral("draw.polyline") && closePath();
+}
+
+bool DrawingCommandSession::closePath() {
+    if ((activeCommandId_ != QStringLiteral("draw.polyline") &&
+         activeCommandId_ != QStringLiteral("draw.line")) || points_.size() < 3) {
+        return false;
+    }
+    if (points_.first() == points_.last()) {
+        attributes_.insert(QStringLiteral("close_path"), true);
+        return true;
+    }
+    const QPointF first = points_.first();
+    if (!acceptPoint(first)) {
+        return false;
+    }
+    coordinateInputs_.replace(coordinateInputs_.size() - 1,
+                              QJsonObject{{QStringLiteral("reference"), 0}});
+    attributes_.insert(QStringLiteral("close_path"), true);
+    return true;
+}
+
+bool DrawingCommandSession::acceptCircleRadius(QStringView input) {
+    if (activeCommandId_ != QStringLiteral("draw.circle") || points_.size() != 1) {
+        return false;
+    }
+    const auto canonicalRadius = canonicalDecimalText(input);
+    if (!canonicalRadius.has_value()) {
+        return false;
+    }
+    const QString& radiusText = *canonicalRadius;
+    const auto radius = parseScalar(QStringView{radiusText});
+    if (!radius.has_value() || *radius <= 0.0) {
+        return false;
+    }
+    const QPointF center = points_.first();
+    const QPointF edge{center.x() + *radius, center.y()};
+    if (!finitePoint(edge) || edge.x() == center.x()) {
+        return false;
+    }
+    if (!acceptPoint(edge)) {
+        return false;
+    }
+    coordinateInputs_.replace(coordinateInputs_.size() - 1,
+        QJsonObject{{QStringLiteral("text"), QStringLiteral("@%1,0").arg(radiusText)}});
+    return true;
+}
+
+bool DrawingCommandSession::acceptScaleFactor(QStringView input) {
+    if (activeCommandId_ != QStringLiteral("modify.scale") || points_.size() != 1) {
+        return false;
+    }
+    const auto canonicalFactor = canonicalDecimalText(input);
+    if (!canonicalFactor.has_value() || canonicalFactor->startsWith(QLatin1Char('-'))) {
+        return false;
+    }
+    const QString& factor = *canonicalFactor;
+    const qsizetype exponent = factor.indexOf(QLatin1Char('e'), 0, Qt::CaseInsensitive);
+    const QStringView mantissa = exponent < 0 ? QStringView{factor} : QStringView{factor}.first(exponent);
+    const bool nonzero = std::any_of(mantissa.begin(), mantissa.end(), [](QChar digit) {
+        return digit >= QLatin1Char('1') && digit <= QLatin1Char('9');
+    });
+    if (!nonzero) {
+        return false;
+    }
+    attributes_.insert(QStringLiteral("factor"), factor);
     return true;
 }
 
@@ -480,10 +825,16 @@ DrawingCommandSession::complete(const QVector<quint64>& selectedItemIds) {
         return std::nullopt;
     }
     QStringList semanticIds;
+    const bool draftingCommand = activeCommandId_.startsWith(QStringLiteral("draw.")) ||
+                                 activeCommandId_.startsWith(QStringLiteral("modify."));
     for (const QString& semanticId : pointSemanticIds_) {
-        if (!semanticId.isEmpty() && !semanticIds.contains(semanticId)) {
+        if (!draftingCommand && !semanticId.isEmpty() && !semanticIds.contains(semanticId)) {
             semanticIds.append(semanticId);
         }
+    }
+    QJsonObject attributes = attributes_;
+    if (draftingCommand && !points_.isEmpty()) {
+        attributes.insert(QStringLiteral("coordinate_inputs"), coordinateInputs_);
     }
     CanonicalEditRequest request{
         .serial = nextSerial_,
@@ -491,7 +842,7 @@ DrawingCommandSession::complete(const QVector<quint64>& selectedItemIds) {
         .points = points_,
         .selectedItemIds = selectedItemIds,
         .semanticIds = semanticIds,
-        .attributes = {},
+        .attributes = std::move(attributes),
     };
     ++nextSerial_;
     ++completedEditCount_;
@@ -503,6 +854,8 @@ void DrawingCommandSession::cancel() noexcept {
     activeCommandId_.clear();
     points_.clear();
     pointSemanticIds_.clear();
+    attributes_ = {};
+    coordinateInputs_ = {};
     pointerPoint_.reset();
 }
 
@@ -528,6 +881,134 @@ CommandPreview DrawingCommandSession::preview() const {
     if (!isActive() || points_.isEmpty()) {
         return result;
     }
+    if (activeCommandId_.startsWith(QStringLiteral("modify.align_anchor_")) ||
+        activeCommandId_ == QStringLiteral("draw.text") ||
+        activeCommandId_ == QStringLiteral("modify.rotate_quarter") ||
+        activeCommandId_ == QStringLiteral("modify.mirror_horizontal") ||
+        activeCommandId_ == QStringLiteral("modify.mirror_vertical") ||
+        activeCommandId_ == QStringLiteral("modify.scale")) {
+        return result;
+    }
+    if (activeCommandId_ == QStringLiteral("draw.ellipse")) {
+        const QPointF first = points_.first();
+        const QPointF opposite = points_.size() == 2 ? points_.last() : pointerPoint_.value_or(first);
+        const QPointF center = first / 2 + opposite / 2;
+        const qreal radiusX = std::abs(opposite.x() / 2 - first.x() / 2);
+        const qreal radiusY = std::abs(opposite.y() / 2 - first.y() / 2);
+        if (!finitePoint(center) || !std::isfinite(radiusX) || !std::isfinite(radiusY) ||
+            radiusX <= 0 || radiusY <= 0) {
+            return result;
+        }
+        constexpr int ellipsePreviewSegments = 64;
+        const QPointF initial{center.x() + radiusX, center.y()};
+        QPointF previous = initial;
+        for (int index = 1; index <= ellipsePreviewSegments; ++index) {
+            const qreal angle = 2 * std::numbers::pi_v<qreal> * index / ellipsePreviewSegments;
+            const QPointF next = index == ellipsePreviewSegments ? initial :
+                center + QPointF{radiusX * std::cos(angle), radiusY * std::sin(angle)};
+            if (!finitePoint(previous) || !finitePoint(next)) {
+                result.segments.clear();
+                return result;
+            }
+            result.segments.append(QLineF{previous, next});
+            previous = next;
+        }
+        return result;
+    }
+    if (activeCommandId_ == QStringLiteral("draw.arc") && points_.size() >= 2) {
+        const QPointF start = points_[0];
+        const QPointF through = points_[1];
+        const QPointF finish = points_.size() == 3 ? points_[2] : pointerPoint_.value_or(through);
+        const QPointF firstDelta = through - start;
+        const QPointF lastDelta = finish - start;
+        const qreal scale = std::max({std::abs(firstDelta.x()), std::abs(firstDelta.y()),
+                                     std::abs(lastDelta.x()), std::abs(lastDelta.y())});
+        if (!std::isfinite(scale) || scale <= 0) {
+            return result;
+        }
+        const QPointF first = firstDelta / scale;
+        const QPointF last = lastDelta / scale;
+        const qreal cross = first.x() * last.y() - first.y() * last.x();
+        if (cross == 0) {
+            return result;
+        }
+        const qreal firstSquared = first.x() * first.x() + first.y() * first.y();
+        const qreal lastSquared = last.x() * last.x() + last.y() * last.y();
+        const QPointF offset{
+            scale * (firstSquared * last.y() - lastSquared * first.y()) / (2 * cross),
+            scale * (first.x() * lastSquared - last.x() * firstSquared) / (2 * cross)};
+        const QPointF center = start + offset;
+        const qreal radius = std::hypot(offset.x(), offset.y());
+        if (!finitePoint(center) || !std::isfinite(radius) || radius <= 0) {
+            return result;
+        }
+        const qreal startAngle = std::atan2(-offset.y(), -offset.x());
+        const qreal throughAngle = std::atan2(firstDelta.y() - offset.y(), firstDelta.x() - offset.x());
+        const qreal finishAngle = std::atan2(lastDelta.y() - offset.y(), lastDelta.x() - offset.x());
+        QPointF previous = start;
+        const auto appendLeg = [&](qreal angle, qreal endAngle, const QPointF& endpoint) {
+            constexpr qreal fullCircle = 2 * std::numbers::pi_v<qreal>;
+            qreal sweep = std::fmod(endAngle - angle, fullCircle);
+            if (sweep < 0) {
+                sweep += fullCircle;
+            }
+            if (sweep == 0) {
+                return false;
+            }
+            if (cross < 0) {
+                sweep -= fullCircle;
+            }
+            const int segments = std::max(1, static_cast<int>(std::ceil(std::abs(sweep) * 64 / fullCircle)));
+            for (int index = 1; index <= segments; ++index) {
+                const qreal theta = angle + sweep * index / segments;
+                const QPointF next = index == segments ? endpoint :
+                    center + QPointF{radius * std::cos(theta), radius * std::sin(theta)};
+                if (!finitePoint(next)) {
+                    return false;
+                }
+                result.segments.append(QLineF{previous, next});
+                previous = next;
+            }
+            return true;
+        };
+        if (!appendLeg(startAngle, throughAngle, through) || !appendLeg(throughAngle, finishAngle, finish)) {
+            result.segments.clear();
+        }
+        return result;
+    }
+    if (activeCommandId_ == QStringLiteral("draw.circle")) {
+        const QPointF center = points_.first();
+        const QPointF edge = points_.size() == 2 ? points_.last() : pointerPoint_.value_or(center);
+        const qreal radius = std::hypot(edge.x() - center.x(), edge.y() - center.y());
+        if (!std::isfinite(radius) || radius <= 0.0) {
+            return result;
+        }
+        constexpr int circlePreviewSegments = 64;
+        const QPointF first{center.x() + radius, center.y()};
+        if (!finitePoint(first) || !finitePoint({center.x() - radius, center.y() - radius}) ||
+            !finitePoint({center.x() + radius, center.y() + radius})) {
+            return result;
+        }
+        QPointF previous = first;
+        for (int index = 1; index <= circlePreviewSegments; ++index) {
+            const qreal angle = 2.0 * std::numbers::pi_v<qreal> * index / circlePreviewSegments;
+            const QPointF next = index == circlePreviewSegments ? first :
+                center + QPointF{radius * std::cos(angle), radius * std::sin(angle)};
+            result.segments.append(QLineF{previous, next});
+            previous = next;
+        }
+        return result;
+    }
+    if (activeCommandId_ == QStringLiteral("draw.rectangle")) {
+        const QPointF opposite = points_.size() >= 2 ? points_[1] :
+                                 pointerPoint_.value_or(points_.first());
+        const QRectF rectangle = QRectF{points_.first(), opposite}.normalized();
+        result.segments = {QLineF{rectangle.topLeft(), rectangle.topRight()},
+                           QLineF{rectangle.topRight(), rectangle.bottomRight()},
+                           QLineF{rectangle.bottomRight(), rectangle.bottomLeft()},
+                           QLineF{rectangle.bottomLeft(), rectangle.topLeft()}};
+        return result;
+    }
     for (qsizetype index = 1; index < points_.size(); ++index) {
         result.segments.append(QLineF{points_[index - 1], points_[index]});
     }
@@ -542,18 +1023,39 @@ quint64 DrawingCommandSession::completedEditCount() const noexcept {
 }
 
 qsizetype DrawingCommandSession::minimumPointCount(QStringView commandId) noexcept {
+    if (commandId == QStringView{u"draw.arc"}) {
+        return 3;
+    }
     if (commandId == QStringView{u"draw.line"} || commandId == QStringView{u"draw.polyline"} ||
+        commandId == QStringView{u"draw.rectangle"} ||
+        commandId == QStringView{u"draw.circle"} ||
+        commandId == QStringView{u"draw.ellipse"} ||
         commandId == QStringView{u"modify.move"} ||
+        commandId == QStringView{u"modify.copy"} ||
         commandId == QStringView{u"electrical.connect"} ||
         commandId == QStringView{u"route.edit"} || commandId == QStringView{u"projection.edit"}) {
         return 2;
     }
-    if (commandId == QStringView{u"equipment.place"} ||
+    if (commandId == QStringView{u"modify.align_anchor_x"} ||
+        commandId == QStringView{u"modify.align_anchor_y"} ||
+        commandId == QStringView{u"equipment.place"} ||
+        commandId == QStringView{u"modify.rotate_quarter"} ||
+        commandId == QStringView{u"modify.mirror_horizontal"} ||
+        commandId == QStringView{u"modify.mirror_vertical"} ||
+        commandId == QStringView{u"modify.scale"} ||
+        commandId == QStringView{u"draw.text"} ||
         commandId == QStringView{u"junction.update"} ||
         commandId == QStringView{u"cross_reference.update"}) {
         return 1;
     }
-    if (commandId == QStringView{u"projection.remove"} ||
+    if (commandId == QStringView{u"modify.join_lines"} ||
+        commandId == QStringView{u"modify.explode_paths"} ||
+        commandId == QStringView{u"modify.text"} ||
+        commandId == QStringView{u"modify.distribute_anchor_x"} ||
+        commandId == QStringView{u"modify.distribute_anchor_y"} ||
+        commandId == QStringView{u"modify.erase"} ||
+        commandId == QStringView{u"edit.undo"} || commandId == QStringView{u"edit.redo"} ||
+        commandId == QStringView{u"projection.remove"} ||
         commandId == QStringView{u"asset.delete"}) {
         return 0;
     }
@@ -567,6 +1069,9 @@ qsizetype DrawingCommandSession::minimumPointCount(QStringView commandId) noexce
 
 QString DrawingCommandSession::resolveCommand(QStringView commandOrAlias) const {
     QString normalized = commandOrAlias.toString().trimmed().toLower();
+    if (customAliases_.contains(normalized)) {
+        return customAliases_.value(normalized);
+    }
     if (aliases_.contains(normalized)) {
         return aliases_.value(normalized);
     }
