@@ -1,4 +1,4 @@
-name: Studio CI
+name: Native Studio CI
 
 on:
   push:
@@ -12,17 +12,127 @@ permissions:
   contents: read
 
 concurrency:
-  group: studio-${{ github.workflow }}-${{ github.ref }}
+  group: native-studio-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  AIMORA_QT_VERSION: "6.11.2"
+  QT_QPA_PLATFORM: "offscreen"
+
 jobs:
-  test:
+  source-contract:
+    name: Source and theme contracts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Verify native repository structure
+        run: |
+          cmake -DAIMORA_SOURCE_DIR="${GITHUB_WORKSPACE}" -P cmake/VerifySourceTree.cmake
+          cmake -DAIMORA_SOURCE_DIR="${GITHUB_WORKSPACE}" -P cmake/VerifyThemeFixtures.cmake
+          git diff --check
+
+  native-build:
+    name: ${{ matrix.os }} native shell
+    needs: source-contract
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    uses: AIMORA-dev/.github/.github/workflows/node-smoke.yml@c4eea2f0d3237419875db67a8c8d8752fce790cd
-    with:
-      runner: ${{ matrix.os }}
-      node-version: '22'
-      test-command: npm test
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Install exact Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
+        with:
+          version: ${{ env.AIMORA_QT_VERSION }}
+          target: desktop
+          cache: true
+          setup-python: true
+          aqtversion: "==3.3.*"
+      - name: Configure
+        run: >-
+          cmake -S . -B build
+          -DBUILD_TESTING=ON
+          -DAIMORA_WARNINGS_AS_ERRORS=ON
+          -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Run light and dark shell smoke
+        run: cmake --build build --config Release --target aimora_studio_smoke
+      - name: Verify architecture command
+        run: build/apps/studio/aimora-studio --architecture
+        if: runner.os != 'Windows'
+      - name: Verify architecture command on Windows
+        run: .\build\apps\studio\Release\aimora-studio.exe --architecture
+        if: runner.os == 'Windows'
+      - name: Verify install tree
+        run: cmake --install build --config Release --prefix staging
+
+  quality:
+    name: Formatting and clang-tidy
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Install exact Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
+        with:
+          version: ${{ env.AIMORA_QT_VERSION }}
+          target: desktop
+          cache: true
+          setup-python: true
+          aqtversion: "==3.3.*"
+      - name: Install static-analysis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang-tidy
+      - name: Check deterministic formatting
+        run: cmake -DAIMORA_SOURCE_DIR="${GITHUB_WORKSPACE}" -P cmake/VerifyFormatting.cmake
+      - name: Configure clang-tidy build
+        env:
+          CC: clang
+          CXX: clang++
+        run: >-
+          cmake -S . -B build-quality
+          -DBUILD_TESTING=ON
+          -DAIMORA_WARNINGS_AS_ERRORS=ON
+          -DAIMORA_ENABLE_CLANG_TIDY=ON
+          -DCMAKE_BUILD_TYPE=Debug
+      - name: Build with clang-tidy
+        run: cmake --build build-quality --parallel
+      - name: Test quality build
+        run: ctest --test-dir build-quality --output-on-failure
+
+  sanitizers:
+    name: ASan and UBSan
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Install exact Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
+        with:
+          version: ${{ env.AIMORA_QT_VERSION }}
+          target: desktop
+          cache: true
+          setup-python: true
+          aqtversion: "==3.3.*"
+      - name: Configure sanitizer build
+        env:
+          CC: clang
+          CXX: clang++
+        run: >-
+          cmake -S . -B build-sanitizers
+          -DBUILD_TESTING=ON
+          -DAIMORA_WARNINGS_AS_ERRORS=ON
+          -DAIMORA_ENABLE_SANITIZERS=ON
+          -DCMAKE_BUILD_TYPE=Debug
+      - name: Build sanitizer targets
+        run: cmake --build build-sanitizers --parallel
+      - name: Test sanitizer build
+        env:
+          ASAN_OPTIONS: detect_leaks=0:strict_string_checks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build-sanitizers --output-on-failure

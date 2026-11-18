@@ -1,0 +1,34 @@
+schema = "aimora.studio.third-party.v1"
+
+[[dependency]]
+name = "Qt"
+version = "6.11.2"
+scope = "build-and-runtime"
+modules = ["Core", "Gui", "Widgets", "Network", "PrintSupport", "Concurrent"]
+test_modules = ["Test"]
+licence_route = "selected-and-recorded-per-distribution"
+source = "The Qt Company / Qt Project official distribution"
+notes = "No Qt binaries are committed by GUI020. A distributed artifact must complete the recorded commercial or compliant open-source route and legal review."
+
+[[dependency]]
+name = "CMake"
+version = ">=3.28"
+scope = "build-only"
+licence = "BSD-3-Clause"
+source = "Kitware official distribution or supported operating-system package"
+
+[[dependency]]
+name = "install-qt-action"
+version = "4.3.1"
+commit = "48d3ad6db93f3627c8ee7a0454bc6f3744f7e730"
+scope = "continuous-integration-only"
+licence = "MIT"
+source = "https://github.com/jurplel/install-qt-action"
+
+[[dependency]]
+name = "GitHub checkout action"
+version = "6"
+commit = "d23441a48e516b6c34aea4fa41551a30e30af803"
+scope = "continuous-integration-only"
+licence = "MIT"
+source = "https://github.com/actions/checkout"

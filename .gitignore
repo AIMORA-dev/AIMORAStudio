@@ -1,4 +1,31 @@
-node_modules/
-dist/
+# CMake and native build output
+/build/
+/out/
+/dist/
+/install/
+/staging/
+CMakeUserPresets.json
+compile_commands.json
+
+# IDE and local tooling
+.vscode/
+.idea/
+*.user
+*.autosave
+*.swp
+.DS_Store
+
+# Test and analysis artifacts
+Testing/
 coverage/
-*.log
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+
+# Native crash and package artifacts
+*.dmp
+*.core
+*.zip
+*.tar.gz
+*.tgz

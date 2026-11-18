@@ -1,0 +1,27 @@
+---
+Checks: >
+  -*,
+  clang-analyzer-*,
+  bugprone-assert-side-effect,
+  bugprone-dangling-handle,
+  bugprone-infinite-loop,
+  bugprone-macro-parentheses,
+  bugprone-multiple-statement-macro,
+  bugprone-narrowing-conversions,
+  bugprone-sizeof-container,
+  bugprone-string-constructor,
+  bugprone-suspicious-enum-usage,
+  bugprone-suspicious-semicolon,
+  bugprone-swapped-arguments,
+  bugprone-use-after-move,
+  modernize-use-nullptr,
+  performance-*,
+  portability-*
+WarningsAsErrors: >
+  clang-analyzer-*,
+  bugprone-*,
+  performance-*,
+  portability-*
+HeaderFilterRegex: '(^|/)(apps|packages)/'
+FormatStyle: file
+...
